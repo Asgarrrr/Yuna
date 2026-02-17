@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Fingerprint, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,22 @@ const initialState: AuthState = {};
 
 export function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("invite");
   const [state, formAction, pending] = useActionState(signUp, initialState);
+  const [inviteValid, setInviteValid] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!inviteToken) {
+      setInviteValid(false);
+      return;
+    }
+
+    fetch(`/api/invitations?token=${inviteToken}`)
+      .then((res) => res.json())
+      .then((data) => setInviteValid(data.valid))
+      .catch(() => setInviteValid(false));
+  }, [inviteToken]);
   const [passkeyPending, setPasskeyPending] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
 
@@ -97,6 +112,38 @@ export function SignUpForm() {
     );
   }
 
+  if (inviteValid === null) {
+    return (
+      <div className="w-full max-w-sm space-y-8">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight">Vérification...</h1>
+          <p className="text-muted-foreground">
+            Validation de votre invitation
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!inviteValid) {
+    return (
+      <div className="w-full max-w-sm space-y-8">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight">Sur invitation</h1>
+          <p className="text-muted-foreground">
+            Yuna est accessible uniquement sur invitation. Demandez un lien à un membre pour rejoindre.
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground text-center">
+          Déjà un compte ?{" "}
+          <Link href="/sign-in" className="underline hover:text-primary">
+            Se connecter
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-sm space-y-8">
       <div className="space-y-2">
@@ -106,6 +153,7 @@ export function SignUpForm() {
         </p>
       </div>
       <form action={formAction} className="space-y-4">
+        <input type="hidden" name="invite" value={inviteToken ?? ""} />
         {state.error && (
           <div role="alert" className="text-sm text-destructive">
             {state.error}
