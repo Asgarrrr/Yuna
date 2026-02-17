@@ -5,14 +5,6 @@ import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Fingerprint, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth/auth-client";
@@ -49,8 +41,10 @@ export function SignUpForm() {
       }
       router.push("/");
       router.refresh();
-    } catch {
-      setPasskeyError(null);
+    } catch (error) {
+      if (error instanceof Error && error.name !== "NotAllowedError") {
+        setPasskeyError("Erreur de configuration, veuillez réessayer");
+      }
     } finally {
       setPasskeyPending(false);
     }
@@ -63,31 +57,31 @@ export function SignUpForm() {
 
   if (state.success) {
     return (
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <div className="flex items-center gap-2">
+      <div className="w-full max-w-sm space-y-8">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
-              <Check className="h-4 w-4 text-primary-foreground" />
+              <Check aria-hidden="true" className="h-4 w-4 text-primary-foreground" />
             </div>
-            <CardTitle className="text-2xl">Compte créé</CardTitle>
+            <h1 className="text-3xl font-bold tracking-tight">Compte créé</h1>
           </div>
-          <CardDescription>
+          <p className="text-muted-foreground">
             Ajoutez une passkey pour vous connecter plus rapidement avec votre
             empreinte ou Face ID
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {passkeyError && (
-            <div className="text-sm text-destructive">{passkeyError}</div>
-          )}
-        </CardContent>
-        <CardFooter className="flex flex-col gap-3">
+          </p>
+        </div>
+        {passkeyError && (
+          <div role="alert" className="text-sm text-destructive">
+            {passkeyError}
+          </div>
+        )}
+        <div className="space-y-3">
           <Button
             className="w-full"
             onClick={handleAddPasskey}
             disabled={passkeyPending}
           >
-            <Fingerprint className="mr-2 h-4 w-4" />
+            <Fingerprint aria-hidden="true" className="mr-2 h-4 w-4" />
             {passkeyPending ? "Configuration..." : "Ajouter une passkey"}
           </Button>
           <Button
@@ -98,69 +92,69 @@ export function SignUpForm() {
           >
             Passer cette étape
           </Button>
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle className="text-2xl">Inscription</CardTitle>
-        <CardDescription>Créez votre compte pour commencer</CardDescription>
-      </CardHeader>
-      <form action={formAction}>
-        <CardContent className="space-y-4">
-          {state.error && (
-            <div className="text-sm text-destructive">{state.error}</div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="name">Nom</Label>
-            <Input
-              id="name"
-              name="name"
-              type="text"
-              placeholder="John Doe"
-              required
-              disabled={pending}
-            />
+    <div className="w-full max-w-sm space-y-8">
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight">Inscription</h1>
+        <p className="text-muted-foreground">
+          Créez votre compte pour commencer
+        </p>
+      </div>
+      <form action={formAction} className="space-y-4">
+        {state.error && (
+          <div role="alert" className="text-sm text-destructive">
+            {state.error}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="email@exemple.com"
-              required
-              disabled={pending}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Mot de passe</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              placeholder="8 caractères minimum"
-              required
-              minLength={8}
-              disabled={pending}
-            />
-          </div>
-        </CardContent>
-        <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Inscription..." : "S'inscrire"}
-          </Button>
-          <p className="text-sm text-muted-foreground text-center">
-            Déjà un compte ?{" "}
-            <Link href="/sign-in" className="underline hover:text-primary">
-              Se connecter
-            </Link>
-          </p>
-        </CardFooter>
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="name">Nom</Label>
+          <Input
+            id="name"
+            name="name"
+            type="text"
+            placeholder="John Doe"
+            required
+            disabled={pending}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="email@exemple.com"
+            required
+            disabled={pending}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Mot de passe</Label>
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            placeholder="8 caractères minimum"
+            required
+            minLength={8}
+            disabled={pending}
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={pending}>
+          {pending ? "Inscription..." : "S'inscrire"}
+        </Button>
       </form>
-    </Card>
+      <p className="text-sm text-muted-foreground text-center">
+        Déjà un compte ?{" "}
+        <Link href="/sign-in" className="underline hover:text-primary">
+          Se connecter
+        </Link>
+      </p>
+    </div>
   );
 }

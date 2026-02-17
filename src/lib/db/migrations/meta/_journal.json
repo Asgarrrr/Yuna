@@ -8,6 +8,13 @@
       "when": 1765581273759,
       "tag": "0000_familiar_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771301277990,
+      "tag": "0001_wakeful_captain_cross",
+      "breakpoints": true
     }
   ]
 }

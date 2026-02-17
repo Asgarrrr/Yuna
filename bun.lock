@@ -6,7 +6,6 @@
       "name": "bunrift",
       "dependencies": {
         "@better-auth/passkey": "^1.4.16",
-        "@neondatabase/serverless": "^1.0.2",
         "@radix-ui/react-label": "^2.1.8",
         "@radix-ui/react-slot": "^1.2.4",
         "better-auth": "^1.4.13",
@@ -16,6 +15,7 @@
         "lucide-react": "^0.562.0",
         "next": "16.1.4",
         "next-themes": "^0.4.6",
+        "postgres": "^3.4.8",
         "react": "19.2.3",
         "react-dom": "19.2.3",
         "tailwind-merge": "^3.4.0",

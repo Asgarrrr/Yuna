@@ -14,10 +14,10 @@ export async function signIn(
   _prevState: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
+  const email = formData.get("email");
+  const password = formData.get("password");
 
-  if (!email || !password) {
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
     return { error: "Email et mot de passe requis" };
   }
 
@@ -27,8 +27,8 @@ export async function signIn(
       headers: await headers(),
     });
   } catch (error) {
-    if (error instanceof APIError) {
-      return { error: error.message ?? "Identifiants invalides" };
+    if (error instanceof APIError && error.status === 401) {
+      return { error: "Identifiants invalides" };
     }
     return { error: "Identifiants invalides" };
   }
@@ -40,11 +40,14 @@ export async function signUp(
   _prevState: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
-  const name = formData.get("name") as string;
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
+  const name = formData.get("name");
+  const email = formData.get("email");
+  const password = formData.get("password");
 
-  if (!name || !email || !password) {
+  if (
+    typeof name !== "string" || typeof email !== "string" || typeof password !== "string" ||
+    !name || !email || !password
+  ) {
     return { error: "Tous les champs sont requis" };
   }
 
@@ -58,12 +61,11 @@ export async function signUp(
       headers: await headers(),
     });
   } catch (error) {
-    console.error("Sign up error:", error);
     if (error instanceof APIError) {
-      return { error: error.message ?? "Erreur lors de l'inscription" };
-    }
-    if (error instanceof Error) {
-      return { error: error.message };
+      if (error.status === 422) {
+        return { error: "Un compte avec cet email existe déjà" };
+      }
+      return { error: "Erreur lors de l'inscription" };
     }
     return { error: "Erreur lors de l'inscription" };
   }
