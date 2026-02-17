@@ -43,6 +43,7 @@ export async function signUp(
   const name = formData.get("name");
   const email = formData.get("email");
   const password = formData.get("password");
+  const inviteToken = formData.get("invite");
 
   if (
     typeof name !== "string" || typeof email !== "string" || typeof password !== "string" ||
@@ -55,15 +56,23 @@ export async function signUp(
     return { error: "Le mot de passe doit contenir au moins 8 caractères" };
   }
 
+  const reqHeaders = new Headers(await headers());
+  if (typeof inviteToken === "string" && inviteToken) {
+    reqHeaders.set("x-invite-token", inviteToken);
+  }
+
   try {
     await auth.api.signUpEmail({
       body: { name, email, password },
-      headers: await headers(),
+      headers: reqHeaders,
     });
   } catch (error) {
     if (error instanceof APIError) {
       if (error.status === 422) {
         return { error: "Un compte avec cet email existe déjà" };
+      }
+      if (error.status === 403) {
+        return { error: error.message || "Invitation invalide ou expirée" };
       }
       return { error: "Erreur lors de l'inscription" };
     }
