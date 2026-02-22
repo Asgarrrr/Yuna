@@ -13,8 +13,22 @@ export const auth = betterAuth({
     schema,
   }),
   plugins: [passkey(), nextCookies()],
+  session: {
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60,
+    },
+  },
   emailAndPassword: {
     enabled: true,
+  },
+  user: {
+    additionalFields: {
+      role: {
+        type: "string",
+        defaultValue: "user",
+      },
+    },
   },
   databaseHooks: {
     user: {

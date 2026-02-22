@@ -22,6 +22,13 @@
       "when": 1771343314832,
       "tag": "0002_regular_mad_thinker",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1771795567461,
+      "tag": "0003_spotty_kat_farrell",
+      "breakpoints": true
     }
   ]
 }

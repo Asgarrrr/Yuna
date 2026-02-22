@@ -8,6 +8,7 @@ export const user = pgTable(
     email: text("email").notNull().unique(),
     emailVerified: boolean("email_verified").default(false).notNull(),
     image: text("image"),
+    role: text("role", { enum: ["admin", "user"] }).default("user").notNull(),
     createdAt: timestamp("created_at").notNull(),
     updatedAt: timestamp("updated_at")
       .$onUpdate(() => new Date())

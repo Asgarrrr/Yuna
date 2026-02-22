@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useActionState, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Fingerprint } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -106,12 +106,6 @@ export function SignInForm() {
           <Fingerprint aria-hidden="true" className="mr-2 h-4 w-4" />
           {passkeyPending ? "Authentification..." : "Passkey / Biométrie"}
         </Button>
-        <p className="text-sm text-muted-foreground text-center">
-          Pas encore de compte ?{" "}
-          <Link href="/sign-up" className="underline hover:text-primary">
-            S'inscrire
-          </Link>
-        </p>
       </div>
     </div>
   );

@@ -1,50 +1,52 @@
-import { NextRequest, NextResponse } from "next/server";
-import { eq, and, isNull, gt } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
+import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { invitation } from "@/lib/db/schema";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 
-function generateToken(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let token = "";
-  for (let i = 0; i < 32; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
+function forbidden() {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
 
-function generateId(): string {
-  return crypto.randomUUID();
+function generateToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes, (b) => b.toString(36).padStart(2, "0"))
+    .join("")
+    .slice(0, 32);
+}
+
+async function requireAdmin() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user || session.user.role !== "admin") return null;
+  return session;
 }
 
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireAdmin();
+  if (!session) return forbidden();
 
   const body = await request.json().catch(() => ({}));
-  const { email, expiresInDays = 7 } = body;
+  const { email } = body;
+  const expiresInDays = Math.min(Math.max(Number(body.expiresInDays) || 7, 1), 30);
 
-  const token = generateToken();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + expiresInDays);
 
   const [newInvitation] = await db
     .insert(invitation)
     .values({
-      id: generateId(),
-      token,
-      email: email || null,
+      id: crypto.randomUUID(),
+      token: generateToken(),
+      email: email ?? null,
       createdBy: session.user.id,
       expiresAt,
     })
     .returning();
 
-  const baseUrl = request.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL;
-  const inviteUrl = `${baseUrl}/register?invite=${token}`;
+  const baseUrl =
+    request.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL;
+  const inviteUrl = `${baseUrl}/sign-up?invite=${newInvitation.token}`;
 
   return NextResponse.json({
     invitation: newInvitation,
@@ -53,14 +55,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const token = request.nextUrl.searchParams.get("token");
 
+  // Token validation is public (needed for sign-up flow)
   if (token) {
     const [inv] = await db
       .select()
@@ -69,40 +66,33 @@ export async function GET(request: NextRequest) {
         and(
           eq(invitation.token, token),
           isNull(invitation.usedBy),
-          gt(invitation.expiresAt, new Date())
-        )
+          gt(invitation.expiresAt, new Date()),
+        ),
       )
       .limit(1);
 
     return NextResponse.json({ valid: !!inv });
   }
 
+  // Listing all invitations requires admin
+  const session = await requireAdmin();
+  if (!session) return forbidden();
+
   const invitations = await db
     .select()
     .from(invitation)
-    .where(eq(invitation.createdBy, session.user.id))
     .orderBy(invitation.createdAt);
 
   return NextResponse.json({ invitations });
 }
 
 export async function DELETE(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireAdmin();
+  if (!session) return forbidden();
 
   const { id } = await request.json();
 
-  await db
-    .delete(invitation)
-    .where(
-      and(
-        eq(invitation.id, id),
-        eq(invitation.createdBy, session.user.id)
-      )
-    );
+  await db.delete(invitation).where(eq(invitation.id, id));
 
   return NextResponse.json({ success: true });
 }

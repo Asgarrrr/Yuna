@@ -1,9 +1,9 @@
 "use client";
 
+import { Check, Fingerprint } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Fingerprint, Check } from "lucide-react";
+import { useActionState, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,7 +76,10 @@ export function SignUpForm() {
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
-              <Check aria-hidden="true" className="h-4 w-4 text-primary-foreground" />
+              <Check
+                aria-hidden="true"
+                className="h-4 w-4 text-primary-foreground"
+              />
             </div>
             <h1 className="text-3xl font-bold tracking-tight">Compte créé</h1>
           </div>
@@ -131,7 +134,8 @@ export function SignUpForm() {
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Sur invitation</h1>
           <p className="text-muted-foreground">
-            Yuna est accessible uniquement sur invitation. Demandez un lien à un membre pour rejoindre.
+            Yuna est accessible uniquement sur invitation. Demandez un lien à un
+            membre pour rejoindre.
           </p>
         </div>
         <p className="text-sm text-muted-foreground text-center">
