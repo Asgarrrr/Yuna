@@ -2,8 +2,8 @@
 
 import { Check, Fingerprint } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,24 +12,15 @@ import { type AuthState, signUp } from "../actions";
 
 const initialState: AuthState = {};
 
-export function SignUpForm() {
+export function SignUpForm({
+  inviteToken,
+  inviteValid,
+}: {
+  inviteToken: string | null;
+  inviteValid: boolean;
+}) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const inviteToken = searchParams.get("invite");
   const [state, formAction, pending] = useActionState(signUp, initialState);
-  const [inviteValid, setInviteValid] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!inviteToken) {
-      setInviteValid(false);
-      return;
-    }
-
-    fetch(`/api/invitations?token=${inviteToken}`)
-      .then((res) => res.json())
-      .then((data) => setInviteValid(data.valid))
-      .catch(() => setInviteValid(false));
-  }, [inviteToken]);
   const [passkeyPending, setPasskeyPending] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
 
@@ -110,19 +101,6 @@ export function SignUpForm() {
           >
             Passer cette étape
           </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (inviteValid === null) {
-    return (
-      <div className="w-full max-w-sm space-y-8">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Vérification...</h1>
-          <p className="text-muted-foreground">
-            Validation de votre invitation
-          </p>
         </div>
       </div>
     );

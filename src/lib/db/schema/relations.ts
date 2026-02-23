@@ -1,9 +1,15 @@
 import { relations } from "drizzle-orm";
-import { account } from "./account";
-import { invitation } from "./invitation";
-import { passkey } from "./passkey";
-import { session } from "./session";
-import { user } from "./user";
+import { account } from "./auth/account";
+import { invitation } from "./auth/invitation";
+import { passkey } from "./auth/passkey";
+import { session } from "./auth/session";
+import { user } from "./auth/user";
+import { inventoryItem } from "./grocery/inventory-item";
+import { product } from "./grocery/product";
+import { shoppingList } from "./grocery/shopping-list";
+import { shoppingListItem } from "./grocery/shopping-list-item";
+
+// ── Auth relations ──────────────────────────────────────
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
@@ -43,6 +49,51 @@ export const accountRelations = relations(account, ({ one }) => ({
 export const passkeyRelations = relations(passkey, ({ one }) => ({
   user: one(user, {
     fields: [passkey.userId],
+    references: [user.id],
+  }),
+}));
+
+// ── Grocery relations ───────────────────────────────────
+
+export const productRelations = relations(product, ({ many, one }) => ({
+  inventoryItems: many(inventoryItem),
+  shoppingListItems: many(shoppingListItem),
+  createdBy: one(user, {
+    fields: [product.createdBy],
+    references: [user.id],
+  }),
+}));
+
+export const shoppingListRelations = relations(shoppingList, ({ many, one }) => ({
+  items: many(shoppingListItem),
+  createdBy: one(user, {
+    fields: [shoppingList.createdBy],
+    references: [user.id],
+  }),
+}));
+
+export const shoppingListItemRelations = relations(shoppingListItem, ({ one }) => ({
+  list: one(shoppingList, {
+    fields: [shoppingListItem.listId],
+    references: [shoppingList.id],
+  }),
+  product: one(product, {
+    fields: [shoppingListItem.productId],
+    references: [product.id],
+  }),
+  addedBy: one(user, {
+    fields: [shoppingListItem.addedBy],
+    references: [user.id],
+  }),
+}));
+
+export const inventoryItemRelations = relations(inventoryItem, ({ one }) => ({
+  product: one(product, {
+    fields: [inventoryItem.productId],
+    references: [product.id],
+  }),
+  addedBy: one(user, {
+    fields: [inventoryItem.addedBy],
     references: [user.id],
   }),
 }));

@@ -1,5 +1,8 @@
+import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { db } from "@/lib/db";
+import { invitation } from "@/lib/db/schema";
 import { SignUpForm } from "./sign-up-form";
 
 export const metadata: Metadata = {
@@ -7,7 +10,32 @@ export const metadata: Metadata = {
   description: "Créez votre compte",
 };
 
-export default function SignUpPage() {
+async function validateInvite(token: string | null): Promise<boolean> {
+  if (!token) return false;
+
+  const [inv] = await db
+    .select({ id: invitation.id })
+    .from(invitation)
+    .where(
+      and(
+        eq(invitation.token, token),
+        isNull(invitation.usedBy),
+        gt(invitation.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  return !!inv;
+}
+
+export default async function SignUpPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string }>;
+}) {
+  const { invite } = await searchParams;
+  const inviteValid = await validateInvite(invite ?? null);
+
   return (
     <Suspense
       fallback={
@@ -18,7 +46,7 @@ export default function SignUpPage() {
         </div>
       }
     >
-      <SignUpForm />
+      <SignUpForm inviteToken={invite ?? null} inviteValid={inviteValid} />
     </Suspense>
   );
 }

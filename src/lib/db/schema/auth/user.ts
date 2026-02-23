@@ -14,7 +14,7 @@ export const user = pgTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => ({
-    emailIdx: index("user_email_idx").on(table.email),
-  }),
+  (table) => [
+    index("user_email_idx").on(table.email),
+  ],
 );
