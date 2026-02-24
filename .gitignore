@@ -40,3 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .devtools
+
+.vercel
+.agents/
+.claude/
+.sisyphus/
+nul

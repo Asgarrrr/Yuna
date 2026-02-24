@@ -2,7 +2,7 @@
 
 import { Clock, Package, ShoppingCart } from "lucide-react";
 import Image from "next/image";
-import { useOptimistic, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -11,40 +11,42 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CATEGORIES, LOCATIONS } from "@/lib/grocery/constants";
+import {
+  CATEGORIES,
+  LOCATIONS,
+  NEXT_STATUS,
+  NUTRISCORE_COLORS,
+} from "@/lib/grocery/constants";
 import type { StockItem } from "@/lib/grocery/queries";
 import { cn } from "@/lib/utils";
 import {
   addOutOfStockToList,
   cycleStockStatus,
   setStockLocation,
-} from "../actions";
+} from "../_actions";
 import { ProductDrawer } from "./product-drawer";
 
 const statusConfig = {
-  in_stock: { dot: "bg-green-500", ring: "ring-green-500/20", label: "En stock" },
+  in_stock: {
+    dot: "bg-green-500",
+    ring: "ring-green-500/20",
+    label: "En stock",
+  },
   low: { dot: "bg-yellow-500", ring: "ring-yellow-500/20", label: "Peu" },
   out: { dot: "bg-red-500", ring: "ring-red-500/20", label: "Épuisé" },
 } as const;
 
-const nextStatusMap: Record<string, string> = {
-  in_stock: "low",
-  low: "out",
-  out: "in_stock",
-};
-
-const nutriscoreColors: Record<string, string> = {
-  a: "bg-green-600",
-  b: "bg-lime-500",
-  c: "bg-yellow-400",
-  d: "bg-orange-500",
-  e: "bg-red-600",
-};
-
 // Pre-compute lookup maps for O(1) access instead of .find() on every render
-const locationMap = new Map<string, string>(LOCATIONS.map((l) => [l.value, l.label]));
-const categoryMap = new Map<string, string>(CATEGORIES.map((c) => [c.value, c.label]));
+const locationMap = new Map<string, string>(
+  LOCATIONS.map((l) => [l.value, l.label]),
+);
+const categoryMap = new Map<string, string>(
+  CATEGORIES.map((c) => [c.value, c.label]),
+);
 const locationOrder: string[] = LOCATIONS.map((l) => l.value);
+const locationRankMap = new Map<string, number>(
+  locationOrder.map((value, index) => [value, index]),
+);
 
 function getLocationLabel(value: string | null) {
   if (!value) return "Non classé";
@@ -76,39 +78,48 @@ export function StockView({
 }) {
   const [isPending, startTransition] = useTransition();
   const [items, setOptimisticItems] = useOptimistic(initialItems);
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(
+    null,
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Derive selected item from current items list so it stays in sync after revalidation
-  const selectedItem = selectedProductId
-    ? items.find((i) => i.productId === selectedProductId) ?? null
-    : null;
+  const { selectedItem, grouped, sortedLocations } = useMemo(() => {
+    // Derive selected item from current items list so it stays in sync after revalidation
+    const selected = selectedProductId
+      ? (items.find((item) => item.productId === selectedProductId) ?? null)
+      : null;
 
-  // Group by location
-  const grouped = new Map<string, StockItem[]>();
-  for (const item of items) {
-    const loc = item.location ?? "unset";
-    const group = grouped.get(loc) ?? [];
-    group.push(item);
-    grouped.set(loc, group);
-  }
+    // Group by location
+    const groupedByLocation = new Map<string, StockItem[]>();
+    for (const item of items) {
+      const loc = item.location ?? "unset";
+      const group = groupedByLocation.get(loc) ?? [];
+      group.push(item);
+      groupedByLocation.set(loc, group);
+    }
 
-  // Sort locations: known locations first (in LOCATIONS order), then unset last
-  const sortedLocations = [...grouped.keys()].sort((a, b) => {
-    if (a === "unset") return 1;
-    if (b === "unset") return -1;
-    const ia = locationOrder.indexOf(a);
-    const ib = locationOrder.indexOf(b);
-    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-  });
+    // Sort locations: known locations first (in LOCATIONS order), then unset last
+    const sorted = [...groupedByLocation.keys()].sort((a, b) => {
+      if (a === "unset") return 1;
+      if (b === "unset") return -1;
+      const ia = locationRankMap.get(a) ?? 999;
+      const ib = locationRankMap.get(b) ?? 999;
+      return ia - ib;
+    });
+
+    return {
+      selectedItem: selected,
+      grouped: groupedByLocation,
+      sortedLocations: sorted,
+    };
+  }, [items, selectedProductId]);
 
   function handleCycleStatus(item: StockItem) {
-    const next = nextStatusMap[item.status] ?? "in_stock";
+    const next =
+      NEXT_STATUS[item.status as keyof typeof NEXT_STATUS] ?? "in_stock";
     startTransition(async () => {
       setOptimisticItems((prev) =>
-        prev.map((i) =>
-          i.id === item.id ? { ...i, status: next } : i,
-        ),
+        prev.map((i) => (i.id === item.id ? { ...i, status: next } : i)),
       );
       await cycleStockStatus(item.productId, item.status);
     });
@@ -123,9 +134,7 @@ export function StockView({
   function handleSetLocation(item: StockItem, location: string) {
     startTransition(async () => {
       setOptimisticItems((prev) =>
-        prev.map((i) =>
-          i.id === item.id ? { ...i, location } : i,
-        ),
+        prev.map((i) => (i.id === item.id ? { ...i, location } : i)),
       );
       await setStockLocation(item.productId, location);
     });
@@ -168,7 +177,9 @@ export function StockView({
                     isPending={isPending}
                     onCycleStatus={() => handleCycleStatus(item)}
                     onAddToList={() => handleAddToList(item)}
-                    onSetLocation={(location) => handleSetLocation(item, location)}
+                    onSetLocation={(location) =>
+                      handleSetLocation(item, location)
+                    }
                     onTap={() => handleOpenDrawer(item)}
                   />
                 ))}
@@ -213,22 +224,11 @@ function StockRow({
   const purchaseDate = formatRelativeDate(item.lastPurchasedAt);
 
   return (
-    <li
-      className="group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent"
-      onClick={onTap}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onTap();
-      }}
-      tabIndex={0}
-      role="button"
-    >
+    <li className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent">
       {/* Status dot */}
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onCycleStatus();
-        }}
+        onClick={onCycleStatus}
         className={cn(
           "flex size-7 shrink-0 items-center justify-center rounded-full ring-4 transition-all",
           config.ring,
@@ -236,72 +236,73 @@ function StockRow({
         title={`Statut : ${config.label} (cliquer pour changer)`}
       >
         <span
-          className={cn(
-            "size-2.5 rounded-full transition-colors",
-            config.dot,
-          )}
+          className={cn("size-2.5 rounded-full transition-colors", config.dot)}
         />
       </button>
 
-      {/* Product image or category icon */}
-      {item.productImageSmallUrl ? (
-        <Image
-          src={item.productImageSmallUrl}
-          alt=""
-          width={36}
-          height={36}
-          className="size-9 shrink-0 rounded-md object-cover"
-        />
-      ) : (
-        item.productIcon && (
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-lg">
-            {item.productIcon}
-          </span>
-        )
-      )}
-
-      {/* Product info */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">
-            {item.productName}
-          </span>
-          {item.productNutriscore && (
-            <span
-              className={cn(
-                "flex size-4 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white",
-                nutriscoreColors[item.productNutriscore] ?? "bg-muted",
-              )}
-            >
-              {item.productNutriscore.toUpperCase()}
+      <button
+        type="button"
+        onClick={onTap}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        {/* Product image or category icon */}
+        {item.productImageSmallUrl ? (
+          <Image
+            src={item.productImageSmallUrl}
+            alt=""
+            width={36}
+            height={36}
+            className="size-9 shrink-0 rounded-md object-cover"
+          />
+        ) : (
+          item.productIcon && (
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-lg">
+              {item.productIcon}
             </span>
-          )}
+          )
+        )}
+
+        {/* Product info */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium">
+              {item.productName}
+            </span>
+            {item.productNutriscore && (
+              <span
+                className={cn(
+                  "flex size-4 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white",
+                  NUTRISCORE_COLORS[item.productNutriscore] ?? "bg-muted",
+                )}
+              >
+                {item.productNutriscore.toUpperCase()}
+              </span>
+            )}
+          </div>
+          <span className="truncate text-xs text-muted-foreground">
+            {item.productBrand && `${item.productBrand} · `}
+            {getCategoryLabel(item.productCategory)}
+            {purchaseDate && ` · ${purchaseDate}`}
+          </span>
         </div>
-        <span className="truncate text-xs text-muted-foreground">
-          {item.productBrand && `${item.productBrand} · `}
-          {getCategoryLabel(item.productCategory)}
-          {purchaseDate && ` · ${purchaseDate}`}
-        </span>
-      </div>
 
-      {/* Restock indicator */}
-      {needsRestock && (
-        <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-950 dark:text-orange-400">
-          <Clock className="size-2.5" />
-          À racheter
-        </span>
-      )}
+        {/* Restock indicator */}
+        {needsRestock && (
+          <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-950 dark:text-orange-400">
+            <Clock className="size-2.5" />À racheter
+          </span>
+        )}
 
-      {/* Price */}
-      {item.productLastPrice && (
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {Number(item.productLastPrice).toFixed(2)}&nbsp;€
-        </span>
-      )}
+        {/* Price */}
+        {item.productLastPrice && (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {Number(item.productLastPrice).toFixed(2)}&nbsp;€
+          </span>
+        )}
+      </button>
 
       {showLocationPicker && (
-        // biome-ignore lint/a11y: role=presentation wrapper to stop click propagation to parent row
-        <div role="presentation" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <div>
           <Select onValueChange={onSetLocation}>
             <SelectTrigger size="sm" className="h-7 w-24 text-xs">
               <SelectValue placeholder="Où ?" />
@@ -321,10 +322,7 @@ function StockRow({
         <Button
           variant="ghost"
           size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAddToList();
-          }}
+          onClick={onAddToList}
           disabled={isPending}
           className="h-7 gap-1 text-xs"
         >

@@ -1,4 +1,12 @@
-import { index, integer, numeric, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { user } from "../auth/user";
 
 export const product = pgTable(
@@ -31,7 +39,7 @@ export const product = pgTable(
   (table) => [
     index("product_name_idx").on(table.name),
     index("product_category_idx").on(table.category),
-    index("product_barcode_idx").on(table.barcode),
+    uniqueIndex("product_barcode_idx").on(table.barcode),
     index("product_usage_count_idx").on(table.usageCount),
   ],
 );

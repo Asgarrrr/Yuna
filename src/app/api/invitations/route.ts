@@ -1,6 +1,7 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { invitation } from "@/lib/db/schema";
@@ -16,6 +17,19 @@ function generateToken(): string {
     .slice(0, 32);
 }
 
+const invitationCreateSchema = z.object({
+  email: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? null : value,
+    z.string().email().nullable().optional(),
+  ),
+  expiresInDays: z.number().int().min(1).max(30).optional(),
+});
+
+const invitationDeleteSchema = z.object({
+  id: z.string().uuid(),
+});
+
 async function requireAdmin() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user || session.user.role !== "admin") return null;
@@ -26,9 +40,12 @@ export async function POST(request: NextRequest) {
   const session = await requireAdmin();
   if (!session) return forbidden();
 
-  const body = await request.json().catch(() => ({}));
-  const { email } = body;
-  const expiresInDays = Math.min(Math.max(Number(body.expiresInDays) || 7, 1), 30);
+  const body = await request.json().catch(() => null);
+  const parsed = invitationCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  }
+  const expiresInDays = parsed.data.expiresInDays ?? 7;
 
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + expiresInDays);
@@ -38,14 +55,13 @@ export async function POST(request: NextRequest) {
     .values({
       id: crypto.randomUUID(),
       token: generateToken(),
-      email: email ?? null,
+      email: parsed.data.email ?? null,
       createdBy: session.user.id,
       expiresAt,
     })
     .returning();
 
-  const baseUrl =
-    request.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL;
+  const baseUrl = request.nextUrl.origin;
   const inviteUrl = `${baseUrl}/sign-up?invite=${newInvitation.token}`;
 
   return NextResponse.json({
@@ -90,9 +106,13 @@ export async function DELETE(request: NextRequest) {
   const session = await requireAdmin();
   if (!session) return forbidden();
 
-  const { id } = await request.json();
+  const body = await request.json().catch(() => null);
+  const parsed = invitationDeleteSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  }
 
-  await db.delete(invitation).where(eq(invitation.id, id));
+  await db.delete(invitation).where(eq(invitation.id, parsed.data.id));
 
   return NextResponse.json({ success: true });
 }

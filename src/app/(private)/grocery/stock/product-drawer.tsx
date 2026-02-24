@@ -2,7 +2,13 @@
 
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { CalendarIcon, Clock, Loader2, ShoppingCart, Trash2 } from "lucide-react";
+import {
+  CalendarIcon,
+  Clock,
+  Loader2,
+  ShoppingCart,
+  Trash2,
+} from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +28,11 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -31,7 +41,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { CATEGORIES, LOCATIONS, STOCK_STATUSES } from "@/lib/grocery/constants";
+import {
+  CATEGORIES,
+  LOCATIONS,
+  NUTRISCORE_COLORS,
+  STOCK_STATUSES,
+} from "@/lib/grocery/constants";
 import type { StockItem } from "@/lib/grocery/queries";
 import { cn } from "@/lib/utils";
 import {
@@ -41,20 +56,16 @@ import {
   removeStockItem,
   setStockExpiry,
   setStockLocation,
-} from "../actions";
+} from "../_actions";
 
 type ProductDetails = Awaited<ReturnType<typeof getProductDetails>>;
 
-const nutriscoreColors: Record<string, string> = {
-  a: "bg-green-600",
-  b: "bg-lime-500",
-  c: "bg-yellow-400",
-  d: "bg-orange-500",
-  e: "bg-red-600",
-};
-
-const categoryMap = new Map<string, string>(CATEGORIES.map((c) => [c.value, c.label]));
-const statusMap = new Map<string, string>(STOCK_STATUSES.map((s) => [s.value, s.label]));
+const categoryMap = new Map<string, string>(
+  CATEGORIES.map((c) => [c.value, c.label]),
+);
+const statusMap = new Map<string, string>(
+  STOCK_STATUSES.map((s) => [s.value, s.label]),
+);
 
 function formatDate(date: Date | null) {
   if (!date) return "—";
@@ -82,14 +93,15 @@ function DrawerBody({
       try {
         const result = await getProductDetails(item.productId);
         setDetails(result);
-      } catch {
-        // silently fail
+      } catch (error) {
+        console.error("[stock] unable to load product details", error);
       }
     });
   }, [item.productId]);
 
   const statusLabel = statusMap.get(item.status) ?? item.status;
-  const categoryLabel = categoryMap.get(item.productCategory) ?? item.productCategory;
+  const categoryLabel =
+    categoryMap.get(item.productCategory) ?? item.productCategory;
 
   const expiryDate = item.expiresAt ? new Date(item.expiresAt) : undefined;
 
@@ -152,7 +164,7 @@ function DrawerBody({
                   className={cn(
                     "flex size-6 items-center justify-center rounded text-xs font-bold",
                     grade === item.productNutriscore
-                      ? `${nutriscoreColors[grade]} text-white scale-110`
+                      ? `${NUTRISCORE_COLORS[grade]} text-white scale-110`
                       : "bg-muted text-muted-foreground",
                   )}
                 >
@@ -174,7 +186,7 @@ function DrawerBody({
             <p>
               {item.productContentAmount && item.productContentUnit
                 ? `${item.productContentAmount} ${item.productContentUnit}`
-                : item.productUnit ?? "—"}
+                : (item.productUnit ?? "—")}
             </p>
           </div>
           <div>
@@ -239,7 +251,9 @@ function DrawerBody({
                 disabled={isPending}
               >
                 <CalendarIcon className="size-4" />
-                {expiryDate ? format(expiryDate, "d MMM yyyy", { locale: fr }) : "Aucune"}
+                {expiryDate
+                  ? format(expiryDate, "d MMM yyyy", { locale: fr })
+                  : "Aucune"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
@@ -270,29 +284,38 @@ function DrawerBody({
               <p className="text-sm">
                 Acheté tous les ~{details.frequency.avgDays} jours
                 <span className="text-muted-foreground">
-                  {" "}({details.frequency.purchaseCount} achat{details.frequency.purchaseCount > 1 ? "s" : ""})
+                  {" "}
+                  ({details.frequency.purchaseCount} achat
+                  {details.frequency.purchaseCount > 1 ? "s" : ""})
                 </span>
               </p>
             )}
             {details.frequency.isOverdue && details.frequency.predictedNext && (
               <p className="text-xs text-orange-600">
                 Prochain achat prévu le{" "}
-                {new Date(details.frequency.predictedNext).toLocaleDateString("fr-FR", {
-                  day: "numeric",
-                  month: "short",
-                })}
-                {" "}— en retard
+                {new Date(details.frequency.predictedNext).toLocaleDateString(
+                  "fr-FR",
+                  {
+                    day: "numeric",
+                    month: "short",
+                  },
+                )}{" "}
+                — en retard
               </p>
             )}
-            {!details.frequency.isOverdue && details.frequency.predictedNext && (
-              <p className="text-xs text-muted-foreground">
-                Prochain achat prévu le{" "}
-                {new Date(details.frequency.predictedNext).toLocaleDateString("fr-FR", {
-                  day: "numeric",
-                  month: "short",
-                })}
-              </p>
-            )}
+            {!details.frequency.isOverdue &&
+              details.frequency.predictedNext && (
+                <p className="text-xs text-muted-foreground">
+                  Prochain achat prévu le{" "}
+                  {new Date(details.frequency.predictedNext).toLocaleDateString(
+                    "fr-FR",
+                    {
+                      day: "numeric",
+                      month: "short",
+                    },
+                  )}
+                </p>
+              )}
           </div>
         )}
       </div>

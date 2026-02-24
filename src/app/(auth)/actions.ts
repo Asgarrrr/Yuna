@@ -17,7 +17,12 @@ export async function signIn(
   const email = formData.get("email");
   const password = formData.get("password");
 
-  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+  if (
+    typeof email !== "string" ||
+    typeof password !== "string" ||
+    !email ||
+    !password
+  ) {
     return { error: "Email et mot de passe requis" };
   }
 
@@ -46,8 +51,12 @@ export async function signUp(
   const inviteToken = formData.get("invite");
 
   if (
-    typeof name !== "string" || typeof email !== "string" || typeof password !== "string" ||
-    !name || !email || !password
+    typeof name !== "string" ||
+    typeof email !== "string" ||
+    typeof password !== "string" ||
+    !name ||
+    !email ||
+    !password
   ) {
     return { error: "Tous les champs sont requis" };
   }

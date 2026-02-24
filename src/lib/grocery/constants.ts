@@ -11,7 +11,7 @@ export const CATEGORIES = [
 ] as const;
 
 export const CATEGORY_VALUES = CATEGORIES.map((c) => c.value);
-type Category = (typeof CATEGORIES)[number]["value"];
+export type Category = (typeof CATEGORIES)[number]["value"];
 
 export const PURCHASE_UNITS = [
   { value: "piece", label: "pièce(s)" },
@@ -54,3 +54,17 @@ export const STOCK_STATUSES = [
 ] as const;
 
 export type StockStatus = (typeof STOCK_STATUSES)[number]["value"];
+
+export const NEXT_STATUS: Record<StockStatus, StockStatus> = {
+  in_stock: "low",
+  low: "out",
+  out: "in_stock",
+};
+
+export const NUTRISCORE_COLORS: Record<string, string> = {
+  a: "bg-green-600",
+  b: "bg-lime-500",
+  c: "bg-yellow-400",
+  d: "bg-orange-500",
+  e: "bg-red-600",
+};
