@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { ActionFAB } from "./action-fab";
 
 const tabs = [
   { href: "/grocery", label: "Liste", exact: true },
@@ -43,6 +44,7 @@ export default function GroceryLayout({
         </nav>
       </div>
       {children}
+      <ActionFAB />
     </div>
   );
 }

@@ -1,28 +1,25 @@
 "use client";
 
-import { Package, Plus, ShoppingCart } from "lucide-react";
-import { useOptimistic, useTransition } from "react";
+import { Clock, Package, ShoppingCart } from "lucide-react";
+import Image from "next/image";
+import { useOptimistic, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CATEGORIES, LOCATIONS } from "@/lib/grocery/constants";
+import type { StockItem } from "@/lib/grocery/queries";
 import { cn } from "@/lib/utils";
 import {
   addOutOfStockToList,
   cycleStockStatus,
   setStockLocation,
 } from "../actions";
-
-type StockItem = {
-  id: string;
-  productId: string;
-  status: string;
-  location: string | null;
-  expiresAt: Date | null;
-  depletedAt: Date | null;
-  lastPurchasedAt: Date | null;
-  productName: string;
-  productIcon: string | null;
-  productCategory: string;
-};
+import { ProductDrawer } from "./product-drawer";
 
 const statusConfig = {
   in_stock: { dot: "bg-green-500", ring: "ring-green-500/20", label: "En stock" },
@@ -36,30 +33,56 @@ const nextStatusMap: Record<string, string> = {
   out: "in_stock",
 };
 
+const nutriscoreColors: Record<string, string> = {
+  a: "bg-green-600",
+  b: "bg-lime-500",
+  c: "bg-yellow-400",
+  d: "bg-orange-500",
+  e: "bg-red-600",
+};
+
+// Pre-compute lookup maps for O(1) access instead of .find() on every render
+const locationMap = new Map<string, string>(LOCATIONS.map((l) => [l.value, l.label]));
+const categoryMap = new Map<string, string>(CATEGORIES.map((c) => [c.value, c.label]));
+const locationOrder: string[] = LOCATIONS.map((l) => l.value);
+
 function getLocationLabel(value: string | null) {
   if (!value) return "Non classé";
-  return LOCATIONS.find((l) => l.value === value)?.label ?? value;
+  return locationMap.get(value) ?? value;
 }
 
 function getCategoryLabel(value: string) {
-  return CATEGORIES.find((c) => c.value === value)?.label ?? value;
+  return categoryMap.get(value) ?? value;
 }
+
+const rtf = new Intl.RelativeTimeFormat("fr", { numeric: "auto" });
 
 function formatRelativeDate(date: Date | null) {
   if (!date) return null;
-  const now = new Date();
-  const diff = now.getTime() - new Date(date).getTime();
+  const diff = Date.now() - new Date(date).getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   if (days === 0) return "Aujourd'hui";
-  if (days === 1) return "Hier";
-  if (days < 7) return `Il y a ${days}j`;
-  if (days < 30) return `Il y a ${Math.floor(days / 7)} sem.`;
-  return `Il y a ${Math.floor(days / 30)} mois`;
+  if (days < 7) return rtf.format(-days, "day");
+  if (days < 30) return rtf.format(-Math.floor(days / 7), "week");
+  return rtf.format(-Math.floor(days / 30), "month");
 }
 
-export function StockView({ initialItems }: { initialItems: StockItem[] }) {
+export function StockView({
+  initialItems,
+  restockProductIds = new Set(),
+}: {
+  initialItems: StockItem[];
+  restockProductIds?: Set<string>;
+}) {
   const [isPending, startTransition] = useTransition();
   const [items, setOptimisticItems] = useOptimistic(initialItems);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Derive selected item from current items list so it stays in sync after revalidation
+  const selectedItem = selectedProductId
+    ? items.find((i) => i.productId === selectedProductId) ?? null
+    : null;
 
   // Group by location
   const grouped = new Map<string, StockItem[]>();
@@ -71,7 +94,6 @@ export function StockView({ initialItems }: { initialItems: StockItem[] }) {
   }
 
   // Sort locations: known locations first (in LOCATIONS order), then unset last
-  const locationOrder: string[] = LOCATIONS.map((l) => l.value);
   const sortedLocations = [...grouped.keys()].sort((a, b) => {
     if (a === "unset") return 1;
     if (b === "unset") return -1;
@@ -109,6 +131,11 @@ export function StockView({ initialItems }: { initialItems: StockItem[] }) {
     });
   }
 
+  function handleOpenDrawer(item: StockItem) {
+    setSelectedProductId(item.productId);
+    setDrawerOpen(true);
+  }
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-12 text-center">
@@ -122,48 +149,62 @@ export function StockView({ initialItems }: { initialItems: StockItem[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {sortedLocations.map((loc) => {
-        const groupItems = grouped.get(loc) ?? [];
-        return (
-          <div key={loc} className="flex flex-col gap-1">
-            <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {loc === "unset" ? "À ranger" : getLocationLabel(loc)}
-            </h2>
-            <ul className="flex flex-col gap-0.5">
-              {groupItems.map((item) => (
-                <StockRow
-                  key={item.id}
-                  item={item}
-                  showLocationPicker={loc === "unset"}
-                  isPending={isPending}
-                  onCycleStatus={() => handleCycleStatus(item)}
-                  onAddToList={() => handleAddToList(item)}
-                  onSetLocation={(location) => handleSetLocation(item, location)}
-                />
-              ))}
-            </ul>
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <div className="flex flex-col gap-6">
+        {sortedLocations.map((loc) => {
+          const groupItems = grouped.get(loc) ?? [];
+          return (
+            <div key={loc} className="flex flex-col gap-1">
+              <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {loc === "unset" ? "À ranger" : getLocationLabel(loc)}
+              </h2>
+              <ul className="flex flex-col gap-0.5">
+                {groupItems.map((item) => (
+                  <StockRow
+                    key={item.id}
+                    item={item}
+                    showLocationPicker={loc === "unset"}
+                    needsRestock={restockProductIds.has(item.productId)}
+                    isPending={isPending}
+                    onCycleStatus={() => handleCycleStatus(item)}
+                    onAddToList={() => handleAddToList(item)}
+                    onSetLocation={(location) => handleSetLocation(item, location)}
+                    onTap={() => handleOpenDrawer(item)}
+                  />
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      <ProductDrawer
+        item={selectedItem}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+      />
+    </>
   );
 }
 
 function StockRow({
   item,
   showLocationPicker,
+  needsRestock,
   isPending,
   onCycleStatus,
   onAddToList,
   onSetLocation,
+  onTap,
 }: {
   item: StockItem;
   showLocationPicker: boolean;
+  needsRestock: boolean;
   isPending: boolean;
   onCycleStatus: () => void;
   onAddToList: () => void;
   onSetLocation: (location: string) => void;
+  onTap: () => void;
 }) {
   const config =
     statusConfig[item.status as keyof typeof statusConfig] ??
@@ -172,10 +213,22 @@ function StockRow({
   const purchaseDate = formatRelativeDate(item.lastPurchasedAt);
 
   return (
-    <li className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent">
+    <li
+      className="group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent"
+      onClick={onTap}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onTap();
+      }}
+      tabIndex={0}
+      role="button"
+    >
+      {/* Status dot */}
       <button
         type="button"
-        onClick={onCycleStatus}
+        onClick={(e) => {
+          e.stopPropagation();
+          onCycleStatus();
+        }}
         className={cn(
           "flex size-7 shrink-0 items-center justify-center rounded-full ring-4 transition-all",
           config.ring,
@@ -190,40 +243,88 @@ function StockRow({
         />
       </button>
 
+      {/* Product image or category icon */}
+      {item.productImageSmallUrl ? (
+        <Image
+          src={item.productImageSmallUrl}
+          alt=""
+          width={36}
+          height={36}
+          className="size-9 shrink-0 rounded-md object-cover"
+        />
+      ) : (
+        item.productIcon && (
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-lg">
+            {item.productIcon}
+          </span>
+        )
+      )}
+
+      {/* Product info */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium">
-          {item.productName}
-        </span>
-        <span className="text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">
+            {item.productName}
+          </span>
+          {item.productNutriscore && (
+            <span
+              className={cn(
+                "flex size-4 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white",
+                nutriscoreColors[item.productNutriscore] ?? "bg-muted",
+              )}
+            >
+              {item.productNutriscore.toUpperCase()}
+            </span>
+          )}
+        </div>
+        <span className="truncate text-xs text-muted-foreground">
+          {item.productBrand && `${item.productBrand} · `}
           {getCategoryLabel(item.productCategory)}
           {purchaseDate && ` · ${purchaseDate}`}
         </span>
       </div>
 
+      {/* Restock indicator */}
+      {needsRestock && (
+        <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-950 dark:text-orange-400">
+          <Clock className="size-2.5" />
+          À racheter
+        </span>
+      )}
+
+      {/* Price */}
+      {item.productLastPrice && (
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {Number(item.productLastPrice).toFixed(2)}&nbsp;€
+        </span>
+      )}
+
       {showLocationPicker && (
-        <select
-          className="h-7 rounded-md border border-input bg-background px-2 text-xs"
-          defaultValue=""
-          onChange={(e) => {
-            if (e.target.value) onSetLocation(e.target.value);
-          }}
-        >
-          <option value="" disabled>
-            Où ?
-          </option>
-          {LOCATIONS.map((l) => (
-            <option key={l.value} value={l.value}>
-              {l.label}
-            </option>
-          ))}
-        </select>
+        // biome-ignore lint/a11y: role=presentation wrapper to stop click propagation to parent row
+        <div role="presentation" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <Select onValueChange={onSetLocation}>
+            <SelectTrigger size="sm" className="h-7 w-24 text-xs">
+              <SelectValue placeholder="Où ?" />
+            </SelectTrigger>
+            <SelectContent>
+              {LOCATIONS.map((l) => (
+                <SelectItem key={l.value} value={l.value}>
+                  {l.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )}
 
       {item.status === "out" && (
         <Button
           variant="ghost"
           size="sm"
-          onClick={onAddToList}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddToList();
+          }}
           disabled={isPending}
           className="h-7 gap-1 text-xs"
         >

@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getStock } from "@/lib/grocery/queries";
+import { getProductsNeedingRestock, getStock } from "@/lib/grocery/queries";
 import { StockView } from "./stock-view";
 
 export default function StockPage() {
@@ -23,6 +23,10 @@ export default function StockPage() {
 }
 
 async function StockLoader() {
-  const items = await getStock();
-  return <StockView initialItems={items} />;
+  const [items, restockIds] = await Promise.all([
+    getStock(),
+    getProductsNeedingRestock(),
+  ]);
+  const restockProductIds = new Set(restockIds);
+  return <StockView initialItems={items} restockProductIds={restockProductIds} />;
 }

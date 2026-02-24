@@ -6,6 +6,7 @@ import { session } from "./auth/session";
 import { user } from "./auth/user";
 import { inventoryItem } from "./grocery/inventory-item";
 import { product } from "./grocery/product";
+import { purchaseHistory } from "./grocery/purchase-history";
 import { shoppingList } from "./grocery/shopping-list";
 import { shoppingListItem } from "./grocery/shopping-list-item";
 
@@ -58,6 +59,7 @@ export const passkeyRelations = relations(passkey, ({ one }) => ({
 export const productRelations = relations(product, ({ many, one }) => ({
   inventoryItems: many(inventoryItem),
   shoppingListItems: many(shoppingListItem),
+  purchaseHistory: many(purchaseHistory),
   createdBy: one(user, {
     fields: [product.createdBy],
     references: [user.id],
@@ -94,6 +96,17 @@ export const inventoryItemRelations = relations(inventoryItem, ({ one }) => ({
   }),
   addedBy: one(user, {
     fields: [inventoryItem.addedBy],
+    references: [user.id],
+  }),
+}));
+
+export const purchaseHistoryRelations = relations(purchaseHistory, ({ one }) => ({
+  product: one(product, {
+    fields: [purchaseHistory.productId],
+    references: [product.id],
+  }),
+  recordedBy: one(user, {
+    fields: [purchaseHistory.recordedBy],
     references: [user.id],
   }),
 }));
