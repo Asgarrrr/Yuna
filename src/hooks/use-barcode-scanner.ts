@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type ScannerState = "idle" | "starting" | "scanning" | "error";
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type ScannerState = "idle" | "starting" | "scanning" | "paused" | "error";
 
 interface UseBarcodeScanner {
   state: ScannerState;
@@ -10,143 +12,289 @@ interface UseBarcodeScanner {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   startScanning: () => void;
   stopScanning: () => void;
+  pauseScanning: () => void;
+  resumeScanning: () => void;
 }
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const BARCODE_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e"] as const;
+
+// ─── Pure helpers ────────────────────────────────────────────────────────────
+
+function releaseMediaStream(stream: MediaStream): void {
+  for (const track of stream.getTracks()) {
+    track.stop();
+  }
+}
+
+function classifyCameraError(message: string): string {
+  if (message.includes("NotAllowed") || message.includes("Permission")) {
+    return "Accès à la caméra refusé. Autorisez l'accès dans les paramètres.";
+  }
+  if (message.includes("NotFound") || message.includes("DevicesNotFound")) {
+    return "Aucune caméra détectée.";
+  }
+  if (message.includes("NotReadable") || message.includes("TrackStartError")) {
+    return "La caméra est utilisée par une autre application.";
+  }
+  return message;
+}
+
+// ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useBarcodeScanner(
   onDetected: (barcode: string) => void,
 ): UseBarcodeScanner {
   const [state, setState] = useState<ScannerState>("idle");
   const [error, setError] = useState<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const detectorRef = useRef<BarcodeDetector | null>(null);
-  const html5QrRef = useRef<{ Html5Qrcode: any } | null>(null);
-  const html5InstanceRef = useRef<any>(null);
   const onDetectedRef = useRef(onDetected);
   onDetectedRef.current = onDetected;
 
-  const cleanup = useCallback(() => {
-    if (rafRef.current) {
+  // Resources (survive pause/resume)
+  const streamRef = useRef<MediaStream | null>(null);
+  const detectorRef = useRef<InstanceType<
+    typeof import("barcode-detector").BarcodeDetector
+  > | null>(null);
+
+  // Loop control (reset on each pause/resume)
+  const rafRef = useRef(0);
+  const loopAbortRef = useRef<AbortController | null>(null);
+
+  // Init lifecycle
+  const initAbortRef = useRef<AbortController | null>(null);
+
+  // Duplicate guard — skip same barcode still in front of camera
+  const lastDetectedRef = useRef<string | null>(null);
+  const lastDetectedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  // ── pauseLoop: stop rAF + abort loop controller ─────────────────────────
+
+  const pauseLoop = useCallback(() => {
+    loopAbortRef.current?.abort();
+    loopAbortRef.current = null;
+
+    if (rafRef.current !== 0) {
       cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+      rafRef.current = 0;
     }
-    if (streamRef.current) {
-      for (const track of streamRef.current.getTracks()) {
-        track.stop();
-      }
-      streamRef.current = null;
-    }
-    if (html5InstanceRef.current) {
-      html5InstanceRef.current.stop().catch(() => {});
-      html5InstanceRef.current.clear();
-      html5InstanceRef.current = null;
-    }
-    detectorRef.current = null;
   }, []);
 
+  // ── teardown: pauseLoop + release stream + null detector ────────────────
+
+  const teardown = useCallback(() => {
+    initAbortRef.current?.abort();
+    initAbortRef.current = null;
+
+    pauseLoop();
+
+    if (streamRef.current) {
+      releaseMediaStream(streamRef.current);
+      streamRef.current = null;
+    }
+
+    detectorRef.current = null;
+
+    // Clear duplicate guard
+    lastDetectedRef.current = null;
+    if (lastDetectedTimerRef.current) {
+      clearTimeout(lastDetectedTimerRef.current);
+      lastDetectedTimerRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, [pauseLoop]);
+
+  // ── startDetectionLoop: launches the rAF detect loop ────────────────────
+
+  const startDetectionLoop = useCallback(() => {
+    const detector = detectorRef.current;
+    const video = videoRef.current;
+    if (!detector || !video) return;
+
+    const controller = new AbortController();
+    loopAbortRef.current = controller;
+    const { signal } = controller;
+
+    const scan = async (): Promise<void> => {
+      if (signal.aborted) return;
+
+      try {
+        const barcodes = await detector.detect(video);
+        if (signal.aborted) return;
+
+        const first = barcodes[0];
+        if (first?.rawValue) {
+          // Skip duplicate: same barcode still in front of camera → keep scanning
+          if (lastDetectedRef.current === first.rawValue) {
+            // fall through to schedule next frame
+          } else {
+            // New barcode — record it, auto-pause, notify consumer
+            lastDetectedRef.current = first.rawValue;
+            if (lastDetectedTimerRef.current)
+              clearTimeout(lastDetectedTimerRef.current);
+            lastDetectedTimerRef.current = setTimeout(() => {
+              lastDetectedRef.current = null;
+            }, 3000);
+
+            pauseLoop();
+            setState("paused");
+            onDetectedRef.current(first.rawValue);
+            return;
+          }
+        }
+      } catch {
+        // Detection failed for this frame — continue
+      }
+
+      if (!signal.aborted) {
+        rafRef.current = requestAnimationFrame(() => void scan());
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(() => void scan());
+  }, [pauseLoop]);
+
+  // ── Public: stopScanning — full teardown ─────────────────────────────────
+
   const stopScanning = useCallback(() => {
-    cleanup();
+    teardown();
     setState("idle");
     setError(null);
-  }, [cleanup]);
+  }, [teardown]);
+
+  // ── Public: pauseScanning — stop loop, keep resources ────────────────────
+
+  const pauseScanning = useCallback(() => {
+    pauseLoop();
+    setState("paused");
+  }, [pauseLoop]);
+
+  // ── Public: startScanning — full init ────────────────────────────────────
 
   const startScanning = useCallback(async () => {
-    cleanup();
+    teardown();
     setState("starting");
     setError(null);
 
-    const hasNativeDetector = typeof window !== "undefined" && "BarcodeDetector" in window;
+    const controller = new AbortController();
+    initAbortRef.current = controller;
+    const { signal } = controller;
 
     try {
-      if (hasNativeDetector) {
-        // ── Native BarcodeDetector path ──
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        });
-        streamRef.current = stream;
+      // 1. Acquire camera stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-
-        detectorRef.current = new window.BarcodeDetector!({
-          formats: ["ean_13", "ean_8", "upc_a", "upc_e"],
-        });
-
-        setState("scanning");
-
-        const scan = async () => {
-          if (!videoRef.current || !detectorRef.current) return;
-          try {
-            const barcodes = await detectorRef.current.detect(videoRef.current);
-            if (barcodes.length > 0) {
-              onDetectedRef.current(barcodes[0].rawValue);
-              return; // Stop scanning after detection
-            }
-          } catch {
-            // Detection failed for this frame, continue
-          }
-          rafRef.current = requestAnimationFrame(scan);
-        };
-
-        rafRef.current = requestAnimationFrame(scan);
-      } else {
-        // ── html5-qrcode fallback ──
-        const mod = html5QrRef.current ?? (await import("html5-qrcode"));
-        html5QrRef.current = mod;
-
-        // Create a temporary container for html5-qrcode
-        const containerId = "barcode-scanner-container";
-        let container = document.getElementById(containerId);
-        if (!container) {
-          container = document.createElement("div");
-          container.id = containerId;
-          container.style.display = "none";
-          document.body.appendChild(container);
-        }
-
-        const html5Qr = new mod.Html5Qrcode(containerId);
-        html5InstanceRef.current = html5Qr;
-
-        setState("scanning");
-
-        await html5Qr.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 250, height: 150 } },
-          (decodedText: string) => {
-            onDetectedRef.current(decodedText);
-          },
-          () => {
-            // Ignore scan failures
-          },
-        );
-
-        // Move the video element created by html5-qrcode into our video ref
-        // This is needed for displaying the camera preview in our custom UI
-        const html5Video = container.querySelector("video");
-        if (html5Video && videoRef.current) {
-          videoRef.current.srcObject = html5Video.srcObject;
-          videoRef.current.play().catch(() => {});
-        }
+      if (signal.aborted) {
+        releaseMediaStream(stream);
+        return;
       }
-    } catch (err) {
-      cleanup();
+
+      streamRef.current = stream;
+
+      // Listen for track ended (browser reclaims camera)
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.addEventListener(
+          "ended",
+          () => {
+            if (streamRef.current === stream) {
+              pauseLoop();
+              streamRef.current = null;
+              detectorRef.current = null;
+              if (videoRef.current) videoRef.current.srcObject = null;
+              setState("error");
+              setError("La caméra a été interrompue. Réessayez.");
+            }
+          },
+          { once: true },
+        );
+      }
+
+      // 2. Bind stream to video element
+      const video = videoRef.current;
+      if (!video) {
+        throw new Error("Video element not available");
+      }
+
+      video.srcObject = stream;
+      await video.play();
+
+      if (signal.aborted) return;
+
+      // 3. Initialize detector (dynamic import — SSR-safe, lazy WASM load)
+      const { BarcodeDetector } = await import("barcode-detector");
+
+      if (signal.aborted) return;
+
+      const detector = new BarcodeDetector({
+        formats: [...BARCODE_FORMATS],
+      });
+
+      detectorRef.current = detector;
+
+      setState("scanning");
+
+      // 4. Start detection loop
+      startDetectionLoop();
+    } catch (err: unknown) {
+      if (signal.aborted) return;
+
+      teardown();
       setState("error");
-      const message =
+
+      const raw =
         err instanceof Error ? err.message : "Impossible d'accéder à la caméra";
-      setError(
-        message.includes("NotAllowed") || message.includes("Permission")
-          ? "Accès à la caméra refusé. Autorisez l'accès dans les paramètres."
-          : message,
-      );
+
+      setError(classifyCameraError(raw));
     }
-  }, [cleanup]);
+  }, [teardown, startDetectionLoop, pauseLoop]);
 
-  useEffect(() => {
-    return cleanup;
-  }, [cleanup]);
+  // ── Public: resumeScanning — reuse existing resources ────────────────────
 
-  return { state, error, videoRef, startScanning, stopScanning };
+  const resumeScanning = useCallback(() => {
+    const detector = detectorRef.current;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    // Check if resources are still alive
+    if (!detector || !video || !stream) {
+      // Resources lost — fallback to full init
+      void startScanning();
+      return;
+    }
+
+    // Check tracks aren't ended (browser reclaimed camera)
+    const tracks = stream.getVideoTracks();
+    if (tracks.length === 0 || tracks[0].readyState === "ended") {
+      // Stream dead — full re-init
+      void startScanning();
+      return;
+    }
+
+    setState("scanning");
+    startDetectionLoop();
+  }, [startScanning, startDetectionLoop]);
+
+  // ── Unmount safety net ─────────────────────────────────────────────────
+
+  useEffect(() => teardown, [teardown]);
+
+  return {
+    state,
+    error,
+    videoRef,
+    startScanning,
+    stopScanning,
+    pauseScanning,
+    resumeScanning,
+  };
 }
