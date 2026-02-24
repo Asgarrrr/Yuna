@@ -12,11 +12,12 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { useBarcodeScanner } from "@/hooks/use-barcode-scanner";
-import { addBarcodeToStock, lookupBarcode } from "./actions";
+import { pluralize } from "@/lib/utils";
+import { addBarcodeToStock, lookupBarcode } from "./_actions";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface LookupResult {
+type LookupResult = {
   barcode: string;
   productName: string | null;
   brand: string | null;
@@ -24,15 +25,15 @@ interface LookupResult {
   nutriscoreGrade: string | null;
   imageSmallUrl: string | null;
   existingProductId: string | null;
-}
+};
 
-interface ScannedItem {
+type ScannedItem = {
   barcode: string;
   name: string;
   brand: string | null;
   imageSmallUrl: string | null;
   lookup: LookupResult;
-}
+};
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -56,52 +57,52 @@ export function BarcodeScannerDrawer({
   const [pendingLookups, setPendingLookups] = useState(0);
 
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scannedBarcodesRef = useRef<Set<string>>(new Set());
 
   const handleDetected = useCallback((barcode: string) => {
     // Brief visual flash — then hook auto-resumes via the consumer below
     setFlash(true);
 
+    // Skip lookups for already-seen barcodes in this session.
+    if (scannedBarcodesRef.current.has(barcode)) {
+      return;
+    }
+    scannedBarcodesRef.current.add(barcode);
+
     // Lookup product in background, don't block scanning
     setPendingLookups((n) => n + 1);
     lookupBarcode(barcode)
       .then((result) => {
-        setItems((prev) => {
-          // Avoid adding exact same barcode twice
-          if (prev.some((item) => item.barcode === barcode)) return prev;
-          return [
-            ...prev,
-            {
-              barcode,
-              name: result.productName ?? `Produit ${barcode}`,
-              brand: result.brand,
-              imageSmallUrl: result.imageSmallUrl,
-              lookup: result,
-            },
-          ];
-        });
+        setItems((prev) => [
+          ...prev,
+          {
+            barcode,
+            name: result.productName ?? `Produit ${barcode}`,
+            brand: result.brand,
+            imageSmallUrl: result.imageSmallUrl,
+            lookup: result,
+          },
+        ]);
       })
       .catch(() => {
-        setItems((prev) => {
-          if (prev.some((item) => item.barcode === barcode)) return prev;
-          return [
-            ...prev,
-            {
+        setItems((prev) => [
+          ...prev,
+          {
+            barcode,
+            name: `Produit ${barcode}`,
+            brand: null,
+            imageSmallUrl: null,
+            lookup: {
               barcode,
-              name: `Produit ${barcode}`,
+              productName: null,
               brand: null,
+              genericName: null,
+              nutriscoreGrade: null,
               imageSmallUrl: null,
-              lookup: {
-                barcode,
-                productName: null,
-                brand: null,
-                genericName: null,
-                nutriscoreGrade: null,
-                imageSmallUrl: null,
-                existingProductId: null,
-              },
+              existingProductId: null,
             },
-          ];
-        });
+          },
+        ]);
       })
       .finally(() => {
         setPendingLookups((n) => Math.max(0, n - 1));
@@ -137,6 +138,7 @@ export function BarcodeScannerDrawer({
       setFlash(false);
       setSaving(false);
       setPendingLookups(0);
+      scannedBarcodesRef.current.clear();
       startScanning();
     } else {
       stopScanning();
@@ -145,6 +147,7 @@ export function BarcodeScannerDrawer({
 
   function handleRemoveItem(barcode: string) {
     setItems((prev) => prev.filter((item) => item.barcode !== barcode));
+    scannedBarcodesRef.current.delete(barcode);
   }
 
   function handleFinish(target: "stock" | "list") {
@@ -157,19 +160,24 @@ export function BarcodeScannerDrawer({
     stopScanning();
 
     startTransition(async () => {
-      try {
-        await Promise.all(
-          items.map((item) =>
-            addBarcodeToStock({
-              ...item.lookup,
-              target,
-            }),
-          ),
-        );
-        onOpenChange(false);
-      } catch {
+      const results = await Promise.allSettled(
+        items.map((item) =>
+          addBarcodeToStock({
+            ...item.lookup,
+            target,
+          }),
+        ),
+      );
+
+      const failures = results.filter((r) => r.status === "rejected");
+      if (failures.length > 0 && failures.length === results.length) {
+        // All failed — stay open so user can retry
         setSaving(false);
+        return;
       }
+
+      // At least some succeeded — close (partial failures are acceptable)
+      onOpenChange(false);
     });
   }
 
@@ -181,7 +189,7 @@ export function BarcodeScannerDrawer({
           <DrawerDescription>
             {items.length === 0
               ? "Scannez vos produits un par un"
-              : `${items.length} produit${items.length > 1 ? "s" : ""} scanné${items.length > 1 ? "s" : ""}`}
+              : `${pluralize(items.length, "produit")} scanné${items.length > 1 ? "s" : ""}`}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -280,8 +288,7 @@ export function BarcodeScannerDrawer({
           {saving ? (
             <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              Ajout de {items.length} produit
-              {items.length > 1 ? "s" : ""}…
+              Ajout de {pluralize(items.length, "produit")}…
             </div>
           ) : (
             <div className="flex flex-col gap-2">

@@ -1,5 +1,6 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { db } from "@/lib/db";
 import { invitation } from "@/lib/db/schema";
@@ -28,14 +29,11 @@ async function validateInvite(token: string | null): Promise<boolean> {
   return !!inv;
 }
 
-export default async function SignUpPage({
+export default function SignUpPage({
   searchParams,
 }: {
   searchParams: Promise<{ invite?: string }>;
 }) {
-  const { invite } = await searchParams;
-  const inviteValid = await validateInvite(invite ?? null);
-
   return (
     <Suspense
       fallback={
@@ -46,7 +44,19 @@ export default async function SignUpPage({
         </div>
       }
     >
-      <SignUpForm inviteToken={invite ?? null} inviteValid={inviteValid} />
+      <SignUpLoader searchParams={searchParams} />
     </Suspense>
   );
+}
+
+async function SignUpLoader({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string }>;
+}) {
+  const [{ invite }] = await Promise.all([searchParams, connection()]);
+  const inviteToken = invite ?? null;
+  const inviteValid = await validateInvite(inviteToken);
+
+  return <SignUpForm inviteToken={inviteToken} inviteValid={inviteValid} />;
 }

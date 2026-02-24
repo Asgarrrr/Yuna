@@ -66,28 +66,34 @@ export const productRelations = relations(product, ({ many, one }) => ({
   }),
 }));
 
-export const shoppingListRelations = relations(shoppingList, ({ many, one }) => ({
-  items: many(shoppingListItem),
-  createdBy: one(user, {
-    fields: [shoppingList.createdBy],
-    references: [user.id],
+export const shoppingListRelations = relations(
+  shoppingList,
+  ({ many, one }) => ({
+    items: many(shoppingListItem),
+    createdBy: one(user, {
+      fields: [shoppingList.createdBy],
+      references: [user.id],
+    }),
   }),
-}));
+);
 
-export const shoppingListItemRelations = relations(shoppingListItem, ({ one }) => ({
-  list: one(shoppingList, {
-    fields: [shoppingListItem.listId],
-    references: [shoppingList.id],
+export const shoppingListItemRelations = relations(
+  shoppingListItem,
+  ({ one }) => ({
+    list: one(shoppingList, {
+      fields: [shoppingListItem.listId],
+      references: [shoppingList.id],
+    }),
+    product: one(product, {
+      fields: [shoppingListItem.productId],
+      references: [product.id],
+    }),
+    addedBy: one(user, {
+      fields: [shoppingListItem.addedBy],
+      references: [user.id],
+    }),
   }),
-  product: one(product, {
-    fields: [shoppingListItem.productId],
-    references: [product.id],
-  }),
-  addedBy: one(user, {
-    fields: [shoppingListItem.addedBy],
-    references: [user.id],
-  }),
-}));
+);
 
 export const inventoryItemRelations = relations(inventoryItem, ({ one }) => ({
   product: one(product, {
@@ -100,13 +106,16 @@ export const inventoryItemRelations = relations(inventoryItem, ({ one }) => ({
   }),
 }));
 
-export const purchaseHistoryRelations = relations(purchaseHistory, ({ one }) => ({
-  product: one(product, {
-    fields: [purchaseHistory.productId],
-    references: [product.id],
+export const purchaseHistoryRelations = relations(
+  purchaseHistory,
+  ({ one }) => ({
+    product: one(product, {
+      fields: [purchaseHistory.productId],
+      references: [product.id],
+    }),
+    recordedBy: one(user, {
+      fields: [purchaseHistory.recordedBy],
+      references: [user.id],
+    }),
   }),
-  recordedBy: one(user, {
-    fields: [purchaseHistory.recordedBy],
-    references: [user.id],
-  }),
-}));
+);

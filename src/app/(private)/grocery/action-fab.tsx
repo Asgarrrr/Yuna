@@ -2,7 +2,7 @@
 
 import { experimental_useObject as useObject } from "@ai-sdk/react";
 import { Camera, Check, Loader2, Plus, ScanBarcode } from "lucide-react";
-import { useRef, useState } from "react";
+import { useMemo, useReducer, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
@@ -12,16 +12,65 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { streamingReceiptSchema } from "@/lib/grocery/receipt-schema";
-import { cn } from "@/lib/utils";
-import { commitReceiptItems } from "./actions";
+import { cn, pluralize } from "@/lib/utils";
+import { commitReceiptItems } from "./_actions";
 import { BarcodeScannerDrawer } from "./barcode-scanner";
 
+type ActionFabState = {
+  isOpen: boolean;
+  scannerOpen: boolean;
+  receiptDrawerOpen: boolean;
+  commitMessage: string | null;
+  isCommitting: boolean;
+};
+
+type ActionFabAction =
+  | { type: "toggle_menu" }
+  | { type: "close_menu" }
+  | { type: "set_scanner_open"; open: boolean }
+  | { type: "set_receipt_open"; open: boolean }
+  | { type: "set_commit_message"; message: string | null }
+  | { type: "set_committing"; value: boolean };
+
+const initialState: ActionFabState = {
+  isOpen: false,
+  scannerOpen: false,
+  receiptDrawerOpen: false,
+  commitMessage: null,
+  isCommitting: false,
+};
+
+function actionFabReducer(
+  state: ActionFabState,
+  action: ActionFabAction,
+): ActionFabState {
+  switch (action.type) {
+    case "toggle_menu":
+      return { ...state, isOpen: !state.isOpen };
+    case "close_menu":
+      return { ...state, isOpen: false };
+    case "set_scanner_open":
+      return { ...state, scannerOpen: action.open };
+    case "set_receipt_open":
+      return { ...state, receiptDrawerOpen: action.open };
+    case "set_commit_message":
+      return { ...state, commitMessage: action.message };
+    case "set_committing":
+      return { ...state, isCommitting: action.value };
+    default:
+      return state;
+  }
+}
+
 export function ActionFAB() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [scannerOpen, setScannerOpen] = useState(false);
-  const [receiptDrawerOpen, setReceiptDrawerOpen] = useState(false);
-  const [commitMessage, setCommitMessage] = useState<string | null>(null);
-  const [isCommitting, setIsCommitting] = useState(false);
+  const [state, dispatch] = useReducer(actionFabReducer, initialState);
+  const {
+    isOpen,
+    scannerOpen,
+    receiptDrawerOpen,
+    commitMessage,
+    isCommitting,
+  } = state;
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { object, isLoading, submit, stop, error } = useObject({
@@ -34,19 +83,37 @@ export function ActionFAB() {
   const storeName = object?.storeName;
   const streamDone = !isLoading && streamedItems.length > 0;
 
+  // Compute stable keys for streamed items (avoids mutable Map during render)
+  const streamedItemKeys = useMemo(() => {
+    const counts = new Map<string, number>();
+    return streamedItems.map((item) => {
+      const baseKey = [
+        item?.humanName ?? "",
+        item?.category ?? "",
+        String(item?.quantity ?? ""),
+        item?.unit ?? "",
+        String(item?.totalPrice ?? ""),
+        String(item?.unitPrice ?? ""),
+      ].join("|");
+      const occurrence = (counts.get(baseKey) ?? 0) + 1;
+      counts.set(baseKey, occurrence);
+      return `${baseKey}|${occurrence}`;
+    });
+  }, [streamedItems]);
+
   function handleFABClick() {
     if (isProcessing) return;
-    setIsOpen((prev) => !prev);
+    dispatch({ type: "toggle_menu" });
   }
 
   function handleReceiptClick() {
-    setIsOpen(false);
+    dispatch({ type: "close_menu" });
     inputRef.current?.click();
   }
 
   function handleBarcodeClick() {
-    setIsOpen(false);
-    setScannerOpen(true);
+    dispatch({ type: "close_menu" });
+    dispatch({ type: "set_scanner_open", open: true });
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -59,7 +126,7 @@ export function ActionFAB() {
       const base64 = result.split(",")[1];
       const mediaType = file.type || "image/jpeg";
 
-      setReceiptDrawerOpen(true);
+      dispatch({ type: "set_receipt_open", open: true });
       submit({ base64Data: base64, mediaType });
     };
     reader.readAsDataURL(file);
@@ -68,13 +135,23 @@ export function ActionFAB() {
 
   async function handleCommit() {
     if (!streamedItems.length) return;
-    setIsCommitting(true);
+    dispatch({ type: "set_committing", value: true });
 
     try {
       const items = streamedItems
         .filter(
-          (item): item is NonNullable<typeof item> & { humanName: string; category: string; quantity: number; unit: string } =>
-            !!item?.humanName && !!item?.category && item?.quantity != null && !!item?.unit,
+          (
+            item,
+          ): item is NonNullable<typeof item> & {
+            humanName: string;
+            category: string;
+            quantity: number;
+            unit: string;
+          } =>
+            !!item?.humanName &&
+            !!item?.category &&
+            item?.quantity != null &&
+            !!item?.unit,
         )
         .map((item) => ({
           humanName: item.humanName,
@@ -86,18 +163,25 @@ export function ActionFAB() {
         }));
 
       const result = await commitReceiptItems(items, storeName ?? null);
-      setCommitMessage(
-        `${result.count} produit${result.count > 1 ? "s" : ""} ajouté${result.count > 1 ? "s" : ""} au stock`,
-      );
+      dispatch({
+        type: "set_commit_message",
+        message: `${pluralize(result.count, "produit")} ajouté${result.count > 1 ? "s" : ""} au stock`,
+      });
       setTimeout(() => {
-        setReceiptDrawerOpen(false);
-        setCommitMessage(null);
+        dispatch({ type: "set_receipt_open", open: false });
+        dispatch({ type: "set_commit_message", message: null });
       }, 2000);
     } catch {
-      setCommitMessage("Erreur lors de la confirmation");
-      setTimeout(() => setCommitMessage(null), 3000);
+      dispatch({
+        type: "set_commit_message",
+        message: "Erreur lors de la confirmation",
+      });
+      setTimeout(
+        () => dispatch({ type: "set_commit_message", message: null }),
+        3000,
+      );
     } finally {
-      setIsCommitting(false);
+      dispatch({ type: "set_committing", value: false });
     }
   }
 
@@ -107,19 +191,18 @@ export function ActionFAB() {
         ref={inputRef}
         type="file"
         accept="image/*,application/pdf"
+        capture="environment"
         className="hidden"
         onChange={handleFileChange}
       />
 
       {/* Backdrop */}
       {isOpen && (
-        <div
+        <button
+          type="button"
           className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity"
-          onClick={() => setIsOpen(false)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setIsOpen(false);
-          }}
-          role="presentation"
+          onClick={() => dispatch({ type: "close_menu" })}
+          aria-label="Fermer le menu d'actions"
         />
       )}
 
@@ -127,7 +210,9 @@ export function ActionFAB() {
       <div
         className={cn(
           "fixed bottom-22 right-6 z-50 flex flex-col gap-3 transition-all duration-200",
-          isOpen ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0",
+          isOpen
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-4 opacity-0",
         )}
       >
         <button
@@ -169,14 +254,17 @@ export function ActionFAB() {
       </Button>
 
       {/* Barcode scanner drawer */}
-      <BarcodeScannerDrawer open={scannerOpen} onOpenChange={setScannerOpen} />
+      <BarcodeScannerDrawer
+        open={scannerOpen}
+        onOpenChange={(open) => dispatch({ type: "set_scanner_open", open })}
+      />
 
       {/* Receipt streaming drawer */}
       <Drawer
         open={receiptDrawerOpen}
         onOpenChange={(open) => {
           if (!open && isLoading) stop();
-          setReceiptDrawerOpen(open);
+          dispatch({ type: "set_receipt_open", open });
         }}
       >
         <DrawerContent>
@@ -188,11 +276,14 @@ export function ActionFAB() {
                   ? "Lecture du ticket..."
                   : isLoading
                     ? `Extraction en cours... (${streamedItems.length} produits)`
-                    : `${streamedItems.length} produit${streamedItems.length > 1 ? "s" : ""} trouvé${streamedItems.length > 1 ? "s" : ""}`}
+                    : `${pluralize(streamedItems.length, "produit")} trouvé${streamedItems.length > 1 ? "s" : ""}`}
             </DrawerTitle>
             <DrawerDescription>
               {storeName && `${storeName}`}
-              {!storeName && isLoading && streamedItems.length === 0 && "Analyse de l'image..."}
+              {!storeName &&
+                isLoading &&
+                streamedItems.length === 0 &&
+                "Analyse de l'image..."}
             </DrawerDescription>
           </DrawerHeader>
 
@@ -209,10 +300,10 @@ export function ActionFAB() {
               </div>
             )}
 
-            {streamedItems.map((item, i) => (
+            {streamedItems.map((item, index) => (
               <div
-                key={i}
-                className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm animate-in fade-in slide-in-from-bottom-2"
+                key={streamedItemKeys[index]}
+                className="flex animate-in items-center justify-between rounded-md px-2 py-1.5 text-sm fade-in slide-in-from-bottom-2"
               >
                 <span className="truncate font-medium">
                   {item?.humanName ?? "..."}
@@ -245,7 +336,7 @@ export function ActionFAB() {
                 ) : (
                   <Check className="size-4" />
                 )}
-                Confirmer ({streamedItems.length} article{streamedItems.length > 1 ? "s" : ""})
+                Confirmer ({pluralize(streamedItems.length, "article")})
               </Button>
             )}
           </div>

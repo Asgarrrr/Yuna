@@ -69,9 +69,7 @@ export async function getProductByBarcode(
   }
 }
 
-export async function searchProduct(
-  query: string,
-): Promise<OFFProduct[]> {
+export async function searchProduct(query: string): Promise<OFFProduct[]> {
   const url = new URL("/cgi/search.pl", BASE_URL);
   url.searchParams.set("search_terms", query);
   url.searchParams.set("json", "1");
@@ -101,8 +99,7 @@ export async function enrichProduct(
       genericName: best.generic_name || null,
       nutriscoreGrade: best.nutriscore_grade || null,
       offId: best.code || null,
-      imageSmallUrl:
-        best.image_front_small_url || best.image_small_url || null,
+      imageSmallUrl: best.image_front_small_url || best.image_small_url || null,
     };
   } catch {
     return null;

@@ -11,13 +11,14 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { pluralize } from "@/lib/utils";
 import {
   addItemsWithAI,
   clearCheckedItems,
   removeItem,
   toggleItem,
   updateItemQuantity,
-} from "./actions";
+} from "./_actions";
 
 type ListItem = {
   id: string;
@@ -103,7 +104,10 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
     try {
       await addItemsWithAI(text.trim());
     } catch {
-      dispatch({ type: "SET_ERROR", error: "Impossible d'ajouter les articles. Réessaie." });
+      dispatch({
+        type: "SET_ERROR",
+        error: "Impossible d'ajouter les articles. Réessaie.",
+      });
       return;
     }
     dispatch({ type: "DONE_ADDING" });
@@ -162,9 +166,7 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
   function handleToggle(item: ListItem) {
     startTransition(async () => {
       setOptimisticItems((prev) =>
-        prev.map((i) =>
-          i.id === item.id ? { ...i, checked: !i.checked } : i,
-        ),
+        prev.map((i) => (i.id === item.id ? { ...i, checked: !i.checked } : i)),
       );
       await toggleItem(item.id);
     });
@@ -176,9 +178,7 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
 
     startTransition(async () => {
       setOptimisticItems((prev) =>
-        prev.map((i) =>
-          i.id === item.id ? { ...i, quantity: newQty } : i,
-        ),
+        prev.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i)),
       );
       await updateItemQuantity(item.id, newQty);
     });
@@ -204,7 +204,11 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
         <Input
           value={inputState.text}
           onChange={(e) => dispatch({ type: "SET_TEXT", text: e.target.value })}
-          placeholder={inputState.isListening ? "Je t'écoute..." : "Ajouter des articles..."}
+          placeholder={
+            inputState.isListening
+              ? "Je t'écoute..."
+              : "Ajouter des articles..."
+          }
           disabled={inputState.isAdding}
           className="flex-1"
         />
@@ -224,7 +228,11 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
             )}
           </Button>
         )}
-        <Button type="submit" size="icon" disabled={inputState.isAdding || !inputState.text.trim()}>
+        <Button
+          type="submit"
+          size="icon"
+          disabled={inputState.isAdding || !inputState.text.trim()}
+        >
           <Send className="size-4" />
         </Button>
       </form>
@@ -235,13 +243,17 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
         </p>
       )}
 
-      {inputState.error && <p className="text-sm text-destructive">{inputState.error}</p>}
-
-      {unchecked.length === 0 && checked.length === 0 && !inputState.isAdding && (
-        <p className="py-12 text-center text-muted-foreground">
-          Ta liste est vide. Dis-moi ce qu'il te faut !
-        </p>
+      {inputState.error && (
+        <p className="text-sm text-destructive">{inputState.error}</p>
       )}
+
+      {unchecked.length === 0 &&
+        checked.length === 0 &&
+        !inputState.isAdding && (
+          <p className="py-12 text-center text-muted-foreground">
+            Ta liste est vide. Dis-moi ce qu'il te faut !
+          </p>
+        )}
 
       {unchecked.length > 0 && (
         <ul className="flex flex-col gap-1">
@@ -261,7 +273,7 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {checked.length} article{checked.length > 1 ? "s" : ""} coché
+              {pluralize(checked.length, "article")} coché
               {checked.length > 1 ? "s" : ""}
             </span>
             <Button
@@ -315,9 +327,7 @@ function ItemRow({
         {item.checked && <Check className="size-3" />}
       </button>
 
-      <span
-        className={`flex-1 text-sm ${item.checked ? "line-through" : ""}`}
-      >
+      <span className={`flex-1 text-sm ${item.checked ? "line-through" : ""}`}>
         {name}
       </span>
 
