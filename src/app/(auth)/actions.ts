@@ -36,7 +36,8 @@ export async function signIn(
       return { error: "Identifiants invalides" };
     }
     console.error("[auth] signIn failed:", error);
-    return { error: "Erreur de connexion" };
+    const detail = error instanceof Error ? error.message : String(error);
+    return { error: `Erreur de connexion: ${detail}` };
   }
 
   redirect("/");
