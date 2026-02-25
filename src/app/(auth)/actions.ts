@@ -35,7 +35,8 @@ export async function signIn(
     if (error instanceof APIError && error.status === 401) {
       return { error: "Identifiants invalides" };
     }
-    return { error: "Identifiants invalides" };
+    console.error("[auth] signIn failed:", error);
+    return { error: "Erreur de connexion" };
   }
 
   redirect("/");
