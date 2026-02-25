@@ -1,4 +1,4 @@
-import { generateText, Output, streamObject } from "ai";
+import { generateText, Output, streamText } from "ai";
 import { z } from "zod";
 import { chatModel, visionModel } from "@/lib/ai/models";
 import { getSession } from "@/lib/auth/session";
@@ -21,8 +21,12 @@ const parseReceiptRequestSchema = z.object({
 export async function POST(request: Request) {
   const session = await getSession();
 
-  // Rate limiting
+  // Rate limiting — clean expired entries first to prevent memory leak
   const now = Date.now();
+  for (const [key, bucket] of rateLimitMap) {
+    if (bucket.resetAt < now) rateLimitMap.delete(key);
+  }
+
   const userId = session.user.id;
   const bucket = rateLimitMap.get(userId);
   if (bucket && now < bucket.resetAt) {
@@ -47,15 +51,6 @@ export async function POST(request: Request) {
     body = await request.json();
   } catch {
     return Response.json({ error: "invalid_json" }, { status: 400 });
-  }
-
-  if (!body || typeof body !== "object") {
-    return Response.json({ error: "invalid_payload" }, { status: 400 });
-  }
-
-  const maybeBody = body as { base64Data?: unknown; mediaType?: unknown };
-  if (!maybeBody.base64Data || !maybeBody.mediaType) {
-    return Response.json({ error: "missing_data" }, { status: 400 });
   }
 
   const parsed = parseReceiptRequestSchema.safeParse(body);
@@ -108,6 +103,7 @@ RÈGLES STRICTES :
       output: Output.object({ schema: rawReceiptSchema }),
       messages: [{ role: "user", content: fileContent }],
       timeout: { totalMs: 60_000 },
+      abortSignal: request.signal,
     });
 
     if (!rawReceipt || rawReceipt.rawLines.length === 0) {
@@ -132,9 +128,10 @@ RÈGLES STRICTES :
       )
       .join("\n");
 
-    const result = streamObject({
+    const result = streamText({
       model: chatModel,
-      schema: streamingReceiptSchema,
+      output: Output.object({ schema: streamingReceiptSchema }),
+      abortSignal: request.signal,
       system: `Tu es un expert en produits de supermarché français.
 
 TÂCHE : On te donne des lignes brutes extraites d'un ticket de caisse ${rawReceipt.storeName ? `(${rawReceipt.storeName})` : ""}. Pour chaque ligne, produis un nom de produit propre et complet.

@@ -56,7 +56,7 @@ import {
   removeStockItem,
   setStockExpiry,
   setStockLocation,
-} from "../_actions";
+} from "../actions";
 
 type ProductDetails = Awaited<ReturnType<typeof getProductDetails>>;
 

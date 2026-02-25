@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/drawer";
 import { useBarcodeScanner } from "@/hooks/use-barcode-scanner";
 import { pluralize } from "@/lib/utils";
-import { addBarcodeToStock, lookupBarcode } from "./_actions";
+import { addBarcodeToStock, lookupBarcode } from "./actions";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

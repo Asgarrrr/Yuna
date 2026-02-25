@@ -18,7 +18,7 @@ import {
   removeItem,
   toggleItem,
   updateItemQuantity,
-} from "./_actions";
+} from "./actions";
 
 type ListItem = {
   id: string;

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/drawer";
 import { streamingReceiptSchema } from "@/lib/grocery/receipt-schema";
 import { cn, pluralize } from "@/lib/utils";
-import { commitReceiptItems } from "./_actions";
+import { commitReceiptItems } from "./actions";
 import { BarcodeScannerDrawer } from "./barcode-scanner";
 
 type ActionFabState = {

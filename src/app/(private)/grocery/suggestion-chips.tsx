@@ -3,7 +3,7 @@
 import { Plus } from "lucide-react";
 import { useOptimistic, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { addSuggestionToList } from "./_actions";
+import { addSuggestionToList } from "./actions";
 
 type Suggestion = {
   id: string;

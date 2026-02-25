@@ -23,7 +23,7 @@ import {
   addOutOfStockToList,
   cycleStockStatus,
   setStockLocation,
-} from "../_actions";
+} from "../actions";
 import { ProductDrawer } from "./product-drawer";
 
 const statusConfig = {
