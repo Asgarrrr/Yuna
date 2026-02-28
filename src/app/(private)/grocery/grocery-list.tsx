@@ -1,46 +1,39 @@
 "use client";
 
-import { Check, Mic, MicOff, Minus, Plus, Send, Trash2, X } from "lucide-react";
+import { Mic, MicOff, Plus, Send, Trash2 } from "lucide-react";
 import {
   useCallback,
   useOptimistic,
   useReducer,
-  useRef,
-  useSyncExternalStore,
   useTransition,
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useSpeechInput } from "@/hooks/use-speech-input";
+import type { ListItem, Suggestion } from "@/lib/grocery/types";
+import { ListItemRow } from "./list-item-row";
 import { pluralize } from "@/lib/utils";
 import {
   addItemsWithAI,
+  addSuggestionToList,
   clearCheckedItems,
   removeItem,
   toggleItem,
   updateItemQuantity,
 } from "./actions";
 
-type ListItem = {
-  id: string;
-  customName: string | null;
-  quantity: number;
-  unit: string;
-  checked: boolean;
-  productName: string | null;
-  productIcon: string | null;
-};
-
 type InputState = {
   text: string;
   isAdding: boolean;
   isListening: boolean;
   error: string | null;
+  message: string | null;
 };
 
 type InputAction =
   | { type: "SET_TEXT"; text: string }
   | { type: "START_ADDING" }
-  | { type: "DONE_ADDING" }
+  | { type: "DONE_ADDING"; message?: string }
   | { type: "SET_ERROR"; error: string }
   | { type: "START_LISTENING" }
   | { type: "STOP_LISTENING" }
@@ -51,11 +44,11 @@ function inputReducer(state: InputState, action: InputAction): InputState {
     case "SET_TEXT":
       return { ...state, text: action.text };
     case "START_ADDING":
-      return { ...state, text: "", error: null, isAdding: true };
+      return { ...state, text: "", error: null, message: null, isAdding: true };
     case "DONE_ADDING":
-      return { ...state, isAdding: false };
+      return { ...state, isAdding: false, message: action.message ?? null };
     case "SET_ERROR":
-      return { ...state, isAdding: false, error: action.error };
+      return { ...state, isAdding: false, message: null, error: action.error };
     case "START_LISTENING":
       return { ...state, text: "", isListening: true };
     case "STOP_LISTENING":
@@ -67,16 +60,13 @@ function inputReducer(state: InputState, action: InputAction): InputState {
   }
 }
 
-function subscribeSpeech() {
-  return () => {};
-}
-
-function getHasSpeechSupport() {
-  if (typeof window === "undefined") return false;
-  return "SpeechRecognition" in window || "webkitSpeechRecognition" in window;
-}
-
-export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
+export function GroceryList({
+  initialItems,
+  suggestions: initialSuggestions,
+}: {
+  initialItems: ListItem[];
+  suggestions: Suggestion[];
+}) {
   const [isPending, startTransition] = useTransition();
   const [optimisticItems, setOptimisticItems] = useOptimistic(initialItems);
   const [inputState, dispatch] = useReducer(inputReducer, {
@@ -84,13 +74,10 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
     isAdding: false,
     isListening: false,
     error: null,
+    message: null,
   });
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const hasSpeechSupport = useSyncExternalStore(
-    subscribeSpeech,
-    getHasSpeechSupport,
-    () => false,
-  );
+  const [suggestions, setOptimisticSuggestions] =
+    useOptimistic(initialSuggestions);
 
   const unchecked: ListItem[] = [];
   const checked: ListItem[] = [];
@@ -102,65 +89,33 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
     if (!text.trim()) return;
     dispatch({ type: "START_ADDING" });
     try {
-      await addItemsWithAI(text.trim());
+      const result = await addItemsWithAI(text.trim());
+      if ("error" in result) {
+        dispatch({
+          type: "SET_ERROR",
+          error: "Impossible d'ajouter les articles. Réessaie.",
+        });
+        return;
+      }
+      dispatch({ type: "DONE_ADDING", message: result.message });
     } catch {
       dispatch({
         type: "SET_ERROR",
         error: "Impossible d'ajouter les articles. Réessaie.",
       });
-      return;
     }
-    dispatch({ type: "DONE_ADDING" });
   }, []);
+
+  const { hasSpeechSupport, toggleListening } = useSpeechInput({
+    onTranscript: (text) => dispatch({ type: "SET_TEXT", text }),
+    onListeningChange: (listening) =>
+      dispatch({ type: listening ? "START_LISTENING" : "STOP_LISTENING" }),
+    onFinalTranscript: submitText,
+  });
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     await submitText(inputState.text);
-  }
-
-  function toggleListening() {
-    if (inputState.isListening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-
-    const recognition = new SR();
-    recognition.lang = "fr-FR";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    let finalTranscript = "";
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interim = transcript;
-        }
-      }
-      dispatch({ type: "SET_TEXT", text: finalTranscript + interim });
-    };
-
-    recognition.onend = () => {
-      dispatch({ type: "STOP_LISTENING" });
-      if (finalTranscript.trim()) {
-        submitText(finalTranscript);
-      }
-    };
-
-    recognition.onerror = () => {
-      dispatch({ type: "STOP_LISTENING" });
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-    dispatch({ type: "START_LISTENING" });
   }
 
   function handleToggle(item: ListItem) {
@@ -188,6 +143,13 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
     startTransition(async () => {
       setOptimisticItems((prev) => prev.filter((i) => i.id !== item.id));
       await removeItem(item.id);
+    });
+  }
+
+  function handleAddSuggestion(s: Suggestion) {
+    startTransition(async () => {
+      setOptimisticSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+      await addSuggestionToList(s.id);
     });
   }
 
@@ -238,13 +200,35 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
       </form>
 
       {inputState.isAdding && (
-        <p className="text-sm text-muted-foreground animate-pulse">
-          Ajout en cours...
-        </p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+          <span className="inline-block size-3 rounded-full border-2 border-muted-foreground border-t-transparent animate-spin" />
+          L'assistant analyse ta demande...
+        </div>
+      )}
+
+      {inputState.message && (
+        <p className="text-sm text-muted-foreground">{inputState.message}</p>
       )}
 
       {inputState.error && (
         <p className="text-sm text-destructive">{inputState.error}</p>
+      )}
+
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {suggestions.map((s) => (
+            <Button
+              key={s.id}
+              variant="outline"
+              size="sm"
+              onClick={() => handleAddSuggestion(s)}
+              className="h-7 gap-1 text-xs"
+            >
+              <Plus className="size-3" />
+              {s.name}
+            </Button>
+          ))}
+        </div>
       )}
 
       {unchecked.length === 0 &&
@@ -258,7 +242,7 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
       {unchecked.length > 0 && (
         <ul className="flex flex-col gap-1">
           {unchecked.map((item) => (
-            <ItemRow
+            <ListItemRow
               key={item.id}
               item={item}
               onToggle={() => handleToggle(item)}
@@ -288,7 +272,7 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
           </div>
           <ul className="flex flex-col gap-1 opacity-50">
             {checked.map((item) => (
-              <ItemRow
+              <ListItemRow
                 key={item.id}
                 item={item}
                 onToggle={() => handleToggle(item)}
@@ -300,68 +284,5 @@ export function GroceryList({ initialItems }: { initialItems: ListItem[] }) {
         </div>
       )}
     </div>
-  );
-}
-
-function ItemRow({
-  item,
-  onToggle,
-  onQuantity,
-  onRemove,
-}: {
-  item: ListItem;
-  onToggle: () => void;
-  onQuantity: (delta: number) => void;
-  onRemove: () => void;
-}) {
-  const name = item.productName ?? item.customName ?? "???";
-
-  return (
-    <li className="group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-accent">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex size-5 shrink-0 items-center justify-center rounded border border-border transition-colors hover:border-foreground"
-        aria-label={item.checked ? "Décocher" : "Cocher"}
-      >
-        {item.checked && <Check className="size-3" />}
-      </button>
-
-      <span className={`flex-1 text-sm ${item.checked ? "line-through" : ""}`}>
-        {name}
-      </span>
-
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => onQuantity(-1)}
-          disabled={item.quantity <= 1}
-          className="opacity-0 group-hover:opacity-100"
-        >
-          <Minus className="size-3" />
-        </Button>
-        <span className="min-w-6 text-center text-xs tabular-nums">
-          {item.quantity}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => onQuantity(1)}
-          className="opacity-0 group-hover:opacity-100"
-        >
-          <Plus className="size-3" />
-        </Button>
-      </div>
-
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onRemove}
-        className="opacity-0 group-hover:opacity-100"
-      >
-        <X className="size-3" />
-      </Button>
-    </li>
   );
 }

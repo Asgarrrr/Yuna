@@ -11,11 +11,17 @@ export {
   updateItemQuantity,
 } from "./list.actions";
 
-export { commitReceiptItems } from "./receipt.actions";
+export {
+  commitReceiptItems,
+  matchReceiptToList,
+  searchProducts,
+} from "./receipt.actions";
 
 export {
+  addProductTag,
   cycleStockStatus,
   getProductDetails,
+  removeProductTag,
   removeStockItem,
   setStockExpiry,
   setStockLocation,

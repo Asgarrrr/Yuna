@@ -1,16 +1,17 @@
 "use server";
 
-import { eq, ilike, sql } from "drizzle-orm";
+import { eq, ilike } from "drizzle-orm";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import {
-  inventoryItem,
-  product,
-  purchaseHistory,
-  shoppingListItem,
-} from "@/lib/db/schema";
+import { product, shoppingListItem } from "@/lib/db/schema";
 import { getProductByBarcode } from "@/lib/grocery/openfoodfacts";
-import { getOrCreateActiveList } from "@/lib/grocery/queries";
+import {
+  getNextSortOrder,
+  getOrCreateActiveList,
+  incrementProductUsage,
+  recordPurchase,
+  upsertInventory,
+} from "@/lib/grocery/queries";
 import {
   barcodePayloadSchema,
   barcodeSchema,
@@ -86,7 +87,6 @@ export async function addBarcodeToStock(data: {
     payload.target === "list"
       ? await getOrCreateActiveList(session.user.id)
       : null;
-  const now = new Date();
 
   const { target, productId } = await db.transaction(async (tx) => {
     let resolvedProductId = payload.existingProductId;
@@ -134,46 +134,15 @@ export async function addBarcodeToStock(data: {
     }
 
     if (payload.target === "stock") {
-      const [existingInventory] = await tx
-        .select({ id: inventoryItem.id })
-        .from(inventoryItem)
-        .where(eq(inventoryItem.productId, resolvedProductId))
-        .limit(1);
-
-      if (existingInventory) {
-        await tx
-          .update(inventoryItem)
-          .set({ status: "in_stock", lastPurchasedAt: now, depletedAt: null })
-          .where(eq(inventoryItem.id, existingInventory.id));
-      } else {
-        await tx.insert(inventoryItem).values({
-          id: crypto.randomUUID(),
-          productId: resolvedProductId,
-          status: "in_stock",
-          lastPurchasedAt: now,
-          depletedAt: null,
-          addedBy: session.user.id,
-        });
-      }
-
-      await tx
-        .update(product)
-        .set({ lastPurchasedAt: now })
-        .where(eq(product.id, resolvedProductId));
+      // Use shared upsertInventory (ON CONFLICT)
+      await upsertInventory(
+        tx,
+        resolvedProductId,
+        "in_stock",
+        session.user.id,
+      );
     } else if (targetList) {
-      const [sortOrderResult] = await tx
-        .select({
-          max: sql<number>`coalesce(max(${shoppingListItem.sortOrder}), 0)`,
-        })
-        .from(shoppingListItem)
-        .where(eq(shoppingListItem.listId, targetList.id));
-
-      await tx
-        .update(product)
-        .set({
-          usageCount: sql`${product.usageCount} + 1`,
-        })
-        .where(eq(product.id, resolvedProductId));
+      const sortOrder = await getNextSortOrder(targetList.id);
 
       await tx.insert(shoppingListItem).values({
         id: crypto.randomUUID(),
@@ -182,16 +151,18 @@ export async function addBarcodeToStock(data: {
         customName: null,
         quantity: 1,
         unit: "piece",
-        sortOrder: (sortOrderResult?.max ?? 0) + 1,
+        sortOrder,
         addedBy: session.user.id,
       });
+
+      await incrementProductUsage(resolvedProductId);
     }
 
-    await tx.insert(purchaseHistory).values({
-      id: crypto.randomUUID(),
+    await recordPurchase({
       productId: resolvedProductId,
       source: "barcode",
-      recordedBy: session.user.id,
+      userId: session.user.id,
+      executor: tx,
     });
 
     return { target: payload.target, productId: resolvedProductId };

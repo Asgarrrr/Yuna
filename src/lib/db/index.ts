@@ -17,3 +17,8 @@ export const db =
 if (process.env.NODE_ENV !== "production") {
   globalForDb.db = db;
 }
+
+/** Transaction or direct db executor — use for shared helpers callable from both contexts */
+export type DbExecutor =
+  | typeof db
+  | Parameters<Parameters<typeof db.transaction>[0]>[0];

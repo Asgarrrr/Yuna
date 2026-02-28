@@ -9,8 +9,5 @@ function wrapForDev(model: ReturnType<typeof openai>) {
   return model;
 }
 
-/** GPT-4o-mini — fast & cheap, good for text tasks */
-export const chatModel = wrapForDev(openai("gpt-4o-mini"));
-
-/** GPT-4o — vision-capable, used for receipt OCR */
-export const visionModel = wrapForDev(openai("gpt-4o"));
+/** GPT-4o-mini — fast, cheap, supports text + vision + PDF */
+export const model = wrapForDev(openai("gpt-4o-mini"));

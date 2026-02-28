@@ -4,8 +4,6 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
   CalendarIcon,
-  Clock,
-  Loader2,
   ShoppingCart,
   Trash2,
 } from "lucide-react";
@@ -42,10 +40,10 @@ import {
 } from "@/components/ui/select";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
-  CATEGORIES,
+  CATEGORY_MAP,
   LOCATIONS,
   NUTRISCORE_COLORS,
-  STOCK_STATUSES,
+  STATUS_MAP,
 } from "@/lib/grocery/constants";
 import type { StockItem } from "@/lib/grocery/queries";
 import { cn } from "@/lib/utils";
@@ -56,16 +54,12 @@ import {
   removeStockItem,
   setStockExpiry,
   setStockLocation,
-} from "../actions";
+} from "../../actions";
+import { PurchaseHistorySection } from "./purchase-history-section";
+import { TagsSection } from "./tags-section";
 
 type ProductDetails = Awaited<ReturnType<typeof getProductDetails>>;
 
-const categoryMap = new Map<string, string>(
-  CATEGORIES.map((c) => [c.value, c.label]),
-);
-const statusMap = new Map<string, string>(
-  STOCK_STATUSES.map((s) => [s.value, s.label]),
-);
 
 function formatDate(date: Date | null) {
   if (!date) return "—";
@@ -99,9 +93,9 @@ function DrawerBody({
     });
   }, [item.productId]);
 
-  const statusLabel = statusMap.get(item.status) ?? item.status;
+  const statusLabel = STATUS_MAP.get(item.status) ?? item.status;
   const categoryLabel =
-    categoryMap.get(item.productCategory) ?? item.productCategory;
+    CATEGORY_MAP.get(item.productCategory) ?? item.productCategory;
 
   const expiryDate = item.expiresAt ? new Date(item.expiresAt) : undefined;
 
@@ -266,57 +260,32 @@ function DrawerBody({
             </PopoverContent>
           </Popover>
         </div>
-        {/* Purchase frequency */}
+
+        {/* Tags & Purchase history */}
         {isLoadingDetails && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
-            Chargement de l'historique...
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
+              <div className="h-3 w-10 animate-pulse rounded bg-muted" />
+              <div className="flex gap-1">
+                <div className="h-5 w-14 animate-pulse rounded-full bg-muted" />
+                <div className="h-5 w-18 animate-pulse rounded-full bg-muted" />
+                <div className="h-5 w-12 animate-pulse rounded-full bg-muted" />
+              </div>
+            </div>
+            <div className="h-20 animate-pulse rounded-lg bg-muted/50" />
           </div>
         )}
 
-        {details?.frequency && details.frequency.purchaseCount > 0 && (
-          <div className="flex flex-col gap-1.5 rounded-lg bg-muted/50 p-3">
-            <div className="flex items-center gap-1.5 text-xs font-medium">
-              <Clock className="size-3.5" />
-              Habitude d'achat
-            </div>
-            {details.frequency.avgDays != null && (
-              <p className="text-sm">
-                Acheté tous les ~{details.frequency.avgDays} jours
-                <span className="text-muted-foreground">
-                  {" "}
-                  ({details.frequency.purchaseCount} achat
-                  {details.frequency.purchaseCount > 1 ? "s" : ""})
-                </span>
-              </p>
-            )}
-            {details.frequency.isOverdue && details.frequency.predictedNext && (
-              <p className="text-xs text-orange-600">
-                Prochain achat prévu le{" "}
-                {new Date(details.frequency.predictedNext).toLocaleDateString(
-                  "fr-FR",
-                  {
-                    day: "numeric",
-                    month: "short",
-                  },
-                )}{" "}
-                — en retard
-              </p>
-            )}
-            {!details.frequency.isOverdue &&
-              details.frequency.predictedNext && (
-                <p className="text-xs text-muted-foreground">
-                  Prochain achat prévu le{" "}
-                  {new Date(details.frequency.predictedNext).toLocaleDateString(
-                    "fr-FR",
-                    {
-                      day: "numeric",
-                      month: "short",
-                    },
-                  )}
-                </p>
-              )}
-          </div>
+        {details?.tags && !isLoadingDetails && (
+          <TagsSection
+            tags={details.tags}
+            productId={item.productId}
+            isPending={isPending}
+          />
+        )}
+
+        {details && !isLoadingDetails && (
+          <PurchaseHistorySection details={details} />
         )}
       </div>
 

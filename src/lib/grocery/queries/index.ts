@@ -1,15 +1,12 @@
 export {
   getActiveListWithItems,
-  getListItems,
   getNextSortOrder,
   getOrCreateActiveList,
 } from "./list.queries";
 export {
-  type BulkUpsertResult,
   bulkUpsertFromReceipt,
-  findProductByName,
+  getProductDetails,
   incrementProductUsage,
-  searchProductsCatalog,
   updateProductOFF,
 } from "./product.queries";
 export {
@@ -19,11 +16,27 @@ export {
   recordPurchase,
 } from "./purchase-history.queries";
 export {
+  bulkUpsertCodeMappings,
+  findMappingsByRawCodes,
+  upsertCodeMapping,
+} from "./receipt-code.queries";
+export {
   getStock,
-  getStockByProductNames,
+  getStockByNamesOrTags,
   getStockSummary,
-  getSuggestions,
   type StockItem,
   updateStockStatus,
+  upsertInventory,
   upsertStockItem,
 } from "./stock.queries";
+export { getSuggestions } from "./stock-suggestions.queries";
+export {
+  addTags,
+  autoTagProduct,
+  autoTagProducts,
+  getProductsByTag,
+  getProductsTagsBulk,
+  getProductTags,
+  removeTags,
+  searchByNameOrTag,
+} from "./tag.queries";

@@ -7,14 +7,16 @@ import { db } from "@/lib/db";
 import { inventoryItem } from "@/lib/db/schema";
 import { NEXT_STATUS, type StockStatus } from "@/lib/grocery/constants";
 import {
-  getProductPurchaseHistory,
-  getPurchaseFrequency,
+  addTags,
+  getProductDetails as getProductDetailsQuery,
+  removeTags,
   updateStockStatus,
 } from "@/lib/grocery/queries";
 import {
   locationSchema,
   revalidateGrocery,
   stockStatusSchema,
+  tagSchema,
   uuidSchema,
 } from "./shared";
 
@@ -107,12 +109,35 @@ export async function setStockExpiry(
 }
 
 export async function getProductDetails(productId: string) {
+  const parsedProductId = uuidSchema.safeParse(productId);
+  if (!parsedProductId.success) {
+    throw new Error("Identifiant de produit invalide");
+  }
+
+  const session = await getSession();
+  return getProductDetailsQuery(parsedProductId.data, session.user.id);
+}
+
+export async function addProductTag(productId: string, tag: string) {
+  const parsedProductId = uuidSchema.safeParse(productId);
+  const parsedTag = tagSchema.safeParse(tag);
+  if (!parsedProductId.success || !parsedTag.success) {
+    throw new Error("Tag ou identifiant invalide");
+  }
+
   await getSession();
+  await addTags(parsedProductId.data, [parsedTag.data], "user");
+  revalidateGrocery("grocery-stock");
+}
 
-  const [frequency, history] = await Promise.all([
-    getPurchaseFrequency(productId),
-    getProductPurchaseHistory(productId),
-  ]);
+export async function removeProductTag(productId: string, tag: string) {
+  const parsedProductId = uuidSchema.safeParse(productId);
+  const parsedTag = tagSchema.safeParse(tag);
+  if (!parsedProductId.success || !parsedTag.success) {
+    throw new Error("Tag ou identifiant invalide");
+  }
 
-  return { frequency, history };
+  await getSession();
+  await removeTags(parsedProductId.data, [parsedTag.data]);
+  revalidateGrocery("grocery-stock");
 }

@@ -12,7 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  CATEGORIES,
+  CATEGORY_MAP,
+  LOCATION_MAP,
   LOCATIONS,
   NEXT_STATUS,
   NUTRISCORE_COLORS,
@@ -36,13 +37,6 @@ const statusConfig = {
   out: { dot: "bg-red-500", ring: "ring-red-500/20", label: "Épuisé" },
 } as const;
 
-// Pre-compute lookup maps for O(1) access instead of .find() on every render
-const locationMap = new Map<string, string>(
-  LOCATIONS.map((l) => [l.value, l.label]),
-);
-const categoryMap = new Map<string, string>(
-  CATEGORIES.map((c) => [c.value, c.label]),
-);
 const locationOrder: string[] = LOCATIONS.map((l) => l.value);
 const locationRankMap = new Map<string, number>(
   locationOrder.map((value, index) => [value, index]),
@@ -50,11 +44,11 @@ const locationRankMap = new Map<string, number>(
 
 function getLocationLabel(value: string | null) {
   if (!value) return "Non classé";
-  return locationMap.get(value) ?? value;
+  return LOCATION_MAP.get(value) ?? value;
 }
 
 function getCategoryLabel(value: string) {
-  return categoryMap.get(value) ?? value;
+  return CATEGORY_MAP.get(value) ?? value;
 }
 
 const rtf = new Intl.RelativeTimeFormat("fr", { numeric: "auto" });
@@ -233,6 +227,7 @@ function StockRow({
           "flex size-7 shrink-0 items-center justify-center rounded-full ring-4 transition-all",
           config.ring,
         )}
+        aria-label={`Statut : ${config.label}. Cliquer pour changer`}
         title={`Statut : ${config.label} (cliquer pour changer)`}
       >
         <span
@@ -268,6 +263,11 @@ function StockRow({
             <span className="truncate text-sm font-medium">
               {item.productName}
             </span>
+            {item.quantity != null && (
+              <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                ×{item.quantity}
+              </span>
+            )}
             {item.productNutriscore && (
               <span
                 className={cn(

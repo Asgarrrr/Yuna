@@ -1,43 +1,34 @@
 "use client";
 
 import { experimental_useObject as useObject } from "@ai-sdk/react";
-import { Camera, Check, Loader2, Plus, ScanBarcode } from "lucide-react";
-import { useMemo, useReducer, useRef } from "react";
+import { Camera, Loader2, Plus, ScanBarcode } from "lucide-react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { streamingReceiptSchema } from "@/lib/grocery/receipt-schema";
 import { cn, pluralize } from "@/lib/utils";
-import { commitReceiptItems } from "./actions";
 import { BarcodeScannerDrawer } from "./barcode-scanner";
+import { ReceiptReviewDrawer } from "./receipt-review";
 
 type ActionFabState = {
   isOpen: boolean;
   scannerOpen: boolean;
-  receiptDrawerOpen: boolean;
-  commitMessage: string | null;
-  isCommitting: boolean;
+  reviewOpen: boolean;
+  successMessage: string | null;
 };
 
 type ActionFabAction =
   | { type: "toggle_menu" }
   | { type: "close_menu" }
   | { type: "set_scanner_open"; open: boolean }
-  | { type: "set_receipt_open"; open: boolean }
-  | { type: "set_commit_message"; message: string | null }
-  | { type: "set_committing"; value: boolean };
+  | { type: "set_review_open"; open: boolean }
+  | { type: "set_success"; message: string | null }
+  | { type: "reset" };
 
 const initialState: ActionFabState = {
   isOpen: false,
   scannerOpen: false,
-  receiptDrawerOpen: false,
-  commitMessage: null,
-  isCommitting: false,
+  reviewOpen: false,
+  successMessage: null,
 };
 
 function actionFabReducer(
@@ -51,12 +42,12 @@ function actionFabReducer(
       return { ...state, isOpen: false };
     case "set_scanner_open":
       return { ...state, scannerOpen: action.open };
-    case "set_receipt_open":
-      return { ...state, receiptDrawerOpen: action.open };
-    case "set_commit_message":
-      return { ...state, commitMessage: action.message };
-    case "set_committing":
-      return { ...state, isCommitting: action.value };
+    case "set_review_open":
+      return { ...state, reviewOpen: action.open };
+    case "set_success":
+      return { ...state, successMessage: action.message };
+    case "reset":
+      return initialState;
     default:
       return state;
   }
@@ -64,42 +55,32 @@ function actionFabReducer(
 
 export function ActionFAB() {
   const [state, dispatch] = useReducer(actionFabReducer, initialState);
-  const {
-    isOpen,
-    scannerOpen,
-    receiptDrawerOpen,
-    commitMessage,
-    isCommitting,
-  } = state;
+  const { isOpen, scannerOpen, reviewOpen, successMessage } = state;
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [parseError, setParseError] = useState<string | null>(null);
 
   const { object, isLoading, submit, stop, error } = useObject({
     api: "/api/grocery/parse-receipt",
     schema: streamingReceiptSchema,
+    onError() {
+      setParseError("Erreur lors de l'analyse du ticket. Réessaie.");
+    },
+    onFinish({ object, error: validationError }) {
+      if (validationError || !object?.items?.length) {
+        setParseError(
+          "Aucun produit détecté sur ce ticket. Vérifie la photo et réessaie.",
+        );
+      }
+    },
   });
 
-  const isProcessing = isLoading || isCommitting;
-  const streamedItems = object?.items ?? [];
-  const storeName = object?.storeName;
-  const streamDone = !isLoading && streamedItems.length > 0;
+  // Stop stream on unmount to avoid orphaned requests
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
+  useEffect(() => () => stopRef.current(), []);
 
-  // Compute stable keys for streamed items (avoids mutable Map during render)
-  const streamedItemKeys = useMemo(() => {
-    const counts = new Map<string, number>();
-    return streamedItems.map((item) => {
-      const baseKey = [
-        item?.humanName ?? "",
-        item?.category ?? "",
-        String(item?.quantity ?? ""),
-        item?.unit ?? "",
-        String(item?.totalPrice ?? ""),
-        String(item?.unitPrice ?? ""),
-      ].join("|");
-      const occurrence = (counts.get(baseKey) ?? 0) + 1;
-      counts.set(baseKey, occurrence);
-      return `${baseKey}|${occurrence}`;
-    });
-  }, [streamedItems]);
+  const isProcessing = isLoading;
 
   function handleFABClick() {
     if (isProcessing) return;
@@ -126,64 +107,37 @@ export function ActionFAB() {
       const base64 = result.split(",")[1];
       const mediaType = file.type || "image/jpeg";
 
-      dispatch({ type: "set_receipt_open", open: true });
+      setParseError(null);
+      dispatch({ type: "set_review_open", open: true });
       submit({ base64Data: base64, mediaType });
     };
     reader.readAsDataURL(file);
     e.target.value = "";
   }
 
-  async function handleCommit() {
-    if (!streamedItems.length) return;
-    dispatch({ type: "set_committing", value: true });
-
-    try {
-      const items = streamedItems
-        .filter(
-          (
-            item,
-          ): item is NonNullable<typeof item> & {
-            humanName: string;
-            category: string;
-            quantity: number;
-            unit: string;
-          } =>
-            !!item?.humanName &&
-            !!item?.category &&
-            item?.quantity != null &&
-            !!item?.unit,
-        )
-        .map((item) => ({
-          humanName: item.humanName,
-          category: item.category,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitPrice: item.unitPrice ?? null,
-          totalPrice: item.totalPrice ?? null,
-        }));
-
-      const result = await commitReceiptItems(items, storeName ?? null);
-      dispatch({
-        type: "set_commit_message",
-        message: `${pluralize(result.count, "produit")} ajouté${result.count > 1 ? "s" : ""} au stock`,
-      });
-      setTimeout(() => {
-        dispatch({ type: "set_receipt_open", open: false });
-        dispatch({ type: "set_commit_message", message: null });
-      }, 2000);
-    } catch {
-      dispatch({
-        type: "set_commit_message",
-        message: "Erreur lors de la confirmation",
-      });
-      setTimeout(
-        () => dispatch({ type: "set_commit_message", message: null }),
-        3000,
-      );
-    } finally {
-      dispatch({ type: "set_committing", value: false });
-    }
+  function handleRetry() {
+    dispatch({ type: "set_review_open", open: false });
+    setParseError(null);
+    inputRef.current?.click();
   }
+
+  function handleReviewOpenChange(open: boolean) {
+    if (!open && isLoading) stop();
+    dispatch({ type: "set_review_open", open });
+  }
+
+  function handleCommitComplete(count: number) {
+    dispatch({ type: "set_review_open", open: false });
+    dispatch({
+      type: "set_success",
+      message: `${pluralize(count, "produit")} ajouté${count > 1 ? "s" : ""} au stock`,
+    });
+    setTimeout(() => dispatch({ type: "reset" }), 2000);
+  }
+
+  const errorMessage = error
+    ? "Erreur lors de l'analyse du ticket"
+    : parseError;
 
   return (
     <>
@@ -259,89 +213,28 @@ export function ActionFAB() {
         onOpenChange={(open) => dispatch({ type: "set_scanner_open", open })}
       />
 
-      {/* Receipt streaming drawer */}
-      <Drawer
-        open={receiptDrawerOpen}
-        onOpenChange={(open) => {
-          if (!open && isLoading) stop();
-          dispatch({ type: "set_receipt_open", open });
-        }}
-      >
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>
-              {commitMessage
-                ? commitMessage
-                : isLoading && streamedItems.length === 0
-                  ? "Lecture du ticket..."
-                  : isLoading
-                    ? `Extraction en cours... (${streamedItems.length} produits)`
-                    : `${pluralize(streamedItems.length, "produit")} trouvé${streamedItems.length > 1 ? "s" : ""}`}
-            </DrawerTitle>
-            <DrawerDescription>
-              {storeName && `${storeName}`}
-              {!storeName &&
-                isLoading &&
-                streamedItems.length === 0 &&
-                "Analyse de l'image..."}
-            </DrawerDescription>
-          </DrawerHeader>
+      {/* Unified review drawer — handles both streaming and review */}
+      <ReceiptReviewDrawer
+        open={reviewOpen}
+        onOpenChange={handleReviewOpenChange}
+        streamedObject={object}
+        isStreaming={isLoading}
+        error={errorMessage}
+        onRetry={handleRetry}
+        onCommitComplete={handleCommitComplete}
+      />
 
-          <div className="flex max-h-[50vh] flex-col gap-1 overflow-y-auto px-4 pb-2">
-            {streamedItems.length === 0 && isLoading && (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="size-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-
-            {error && (
-              <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                Erreur lors de l'analyse du ticket
-              </div>
-            )}
-
-            {streamedItems.map((item, index) => (
-              <div
-                key={streamedItemKeys[index]}
-                className="flex animate-in items-center justify-between rounded-md px-2 py-1.5 text-sm fade-in slide-in-from-bottom-2"
-              >
-                <span className="truncate font-medium">
-                  {item?.humanName ?? "..."}
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {item?.totalPrice != null
-                    ? `${item.totalPrice.toFixed(2)} €`
-                    : item?.unitPrice != null
-                      ? `${item.unitPrice.toFixed(2)} €`
-                      : ""}
-                </span>
-              </div>
-            ))}
+      {/* Success toast */}
+      {successMessage && (
+        <div className="fixed inset-x-0 bottom-24 z-50 mx-auto w-fit animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center gap-2 rounded-full bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            <span className="flex size-5 items-center justify-center rounded-full bg-white/20">
+              ✓
+            </span>
+            {successMessage}
           </div>
-
-          <div className="border-t p-4">
-            {commitMessage ? (
-              <div className="flex items-center justify-center gap-2 text-sm text-green-600">
-                <Check className="size-4" />
-                {commitMessage}
-              </div>
-            ) : (
-              <Button
-                onClick={handleCommit}
-                disabled={!streamDone || isCommitting}
-                className="w-full gap-2"
-              >
-                {isCommitting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Check className="size-4" />
-                )}
-                Confirmer ({pluralize(streamedItems.length, "article")})
-              </Button>
-            )}
-          </div>
-        </DrawerContent>
-      </Drawer>
+        </div>
+      )}
     </>
   );
 }

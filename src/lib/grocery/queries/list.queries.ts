@@ -5,17 +5,9 @@ import { db } from "@/lib/db";
 import { product, shoppingList, shoppingListItem } from "@/lib/db/schema";
 
 export async function getOrCreateActiveList(userId: string) {
-  const [existing] = await db
-    .select()
-    .from(shoppingList)
-    .where(
-      and(eq(shoppingList.isActive, true), eq(shoppingList.createdBy, userId)),
-    )
-    .limit(1);
-
-  if (existing) return existing;
-
-  const [created] = await db
+  // Atomic: INSERT with ON CONFLICT (uses unique index on created_by WHERE is_active)
+  // If a concurrent request already created the list, we just fall through to the SELECT.
+  await db
     .insert(shoppingList)
     .values({
       id: crypto.randomUUID(),
@@ -23,9 +15,17 @@ export async function getOrCreateActiveList(userId: string) {
       isActive: true,
       createdBy: userId,
     })
-    .returning();
+    .onConflictDoNothing();
 
-  return created;
+  const [list] = await db
+    .select()
+    .from(shoppingList)
+    .where(
+      and(eq(shoppingList.isActive, true), eq(shoppingList.createdBy, userId)),
+    )
+    .limit(1);
+
+  return list;
 }
 
 export async function getListItems(listId: string) {

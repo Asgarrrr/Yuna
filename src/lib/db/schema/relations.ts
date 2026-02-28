@@ -6,7 +6,9 @@ import { session } from "./auth/session";
 import { user } from "./auth/user";
 import { inventoryItem } from "./grocery/inventory-item";
 import { product } from "./grocery/product";
+import { productTag } from "./grocery/product-tag";
 import { purchaseHistory } from "./grocery/purchase-history";
+import { receiptCodeMapping } from "./grocery/receipt-code-mapping";
 import { shoppingList } from "./grocery/shopping-list";
 import { shoppingListItem } from "./grocery/shopping-list-item";
 
@@ -60,6 +62,8 @@ export const productRelations = relations(product, ({ many, one }) => ({
   inventoryItems: many(inventoryItem),
   shoppingListItems: many(shoppingListItem),
   purchaseHistory: many(purchaseHistory),
+  receiptCodeMappings: many(receiptCodeMapping),
+  tags: many(productTag),
   createdBy: one(user, {
     fields: [product.createdBy],
     references: [user.id],
@@ -119,3 +123,24 @@ export const purchaseHistoryRelations = relations(
     }),
   }),
 );
+
+export const receiptCodeMappingRelations = relations(
+  receiptCodeMapping,
+  ({ one }) => ({
+    product: one(product, {
+      fields: [receiptCodeMapping.productId],
+      references: [product.id],
+    }),
+    createdBy: one(user, {
+      fields: [receiptCodeMapping.createdBy],
+      references: [user.id],
+    }),
+  }),
+);
+
+export const productTagRelations = relations(productTag, ({ one }) => ({
+  product: one(product, {
+    fields: [productTag.productId],
+    references: [product.id],
+  }),
+}));

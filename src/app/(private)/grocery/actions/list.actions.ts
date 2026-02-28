@@ -3,16 +3,13 @@
 import { and, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import {
-  inventoryItem,
-  product,
-  purchaseHistory,
-  shoppingListItem,
-} from "@/lib/db/schema";
+import { shoppingListItem } from "@/lib/db/schema";
 import {
   getNextSortOrder,
   getOrCreateActiveList,
   incrementProductUsage,
+  recordPurchase,
+  upsertInventory,
 } from "@/lib/grocery/queries";
 import {
   listItemIdSchema,
@@ -47,13 +44,12 @@ export async function toggleItem(itemId: string) {
     if (!item) return false;
 
     const newChecked = !item.checked;
-    const now = new Date();
 
     await tx
       .update(shoppingListItem)
       .set({
         checked: newChecked,
-        checkedAt: newChecked ? now : null,
+        checkedAt: newChecked ? new Date() : null,
       })
       .where(
         and(
@@ -63,42 +59,14 @@ export async function toggleItem(itemId: string) {
       );
 
     if (newChecked && item.productId) {
-      const [existingStock] = await tx
-        .select({ id: inventoryItem.id })
-        .from(inventoryItem)
-        .where(eq(inventoryItem.productId, item.productId))
-        .limit(1);
+      // Use shared upsertInventory (ON CONFLICT)
+      await upsertInventory(tx, item.productId, "in_stock", session.user.id);
 
-      if (existingStock) {
-        await tx
-          .update(inventoryItem)
-          .set({
-            status: "in_stock",
-            lastPurchasedAt: now,
-            depletedAt: null,
-          })
-          .where(eq(inventoryItem.id, existingStock.id));
-      } else {
-        await tx.insert(inventoryItem).values({
-          id: crypto.randomUUID(),
-          productId: item.productId,
-          status: "in_stock",
-          lastPurchasedAt: now,
-          depletedAt: null,
-          addedBy: session.user.id,
-        });
-      }
-
-      await tx
-        .update(product)
-        .set({ lastPurchasedAt: now })
-        .where(eq(product.id, item.productId));
-
-      await tx.insert(purchaseHistory).values({
-        id: crypto.randomUUID(),
+      await recordPurchase({
         productId: item.productId,
         source: "list_check",
-        recordedBy: session.user.id,
+        userId: session.user.id,
+        executor: tx,
       });
     }
 
@@ -178,33 +146,28 @@ export async function addOutOfStockToList(productId: string) {
 
   const session = await getSession();
   const list = await getOrCreateActiveList(session.user.id);
-
-  const [existing] = await db
-    .select({ id: shoppingListItem.id })
-    .from(shoppingListItem)
-    .where(
-      and(
-        eq(shoppingListItem.listId, list.id),
-        eq(shoppingListItem.productId, parsedProductId.data),
-      ),
-    )
-    .limit(1);
-
-  if (existing) return;
-
   const sortOrder = await getNextSortOrder(list.id);
-  await incrementProductUsage(parsedProductId.data);
 
-  await db.insert(shoppingListItem).values({
-    id: crypto.randomUUID(),
-    listId: list.id,
-    productId: parsedProductId.data,
-    customName: null,
-    quantity: 1,
-    unit: "piece",
-    sortOrder,
-    addedBy: session.user.id,
-  });
+  // Atomic: ON CONFLICT uses partial unique index (listId, productId)
+  const result = await db
+    .insert(shoppingListItem)
+    .values({
+      id: crypto.randomUUID(),
+      listId: list.id,
+      productId: parsedProductId.data,
+      customName: null,
+      quantity: 1,
+      unit: "piece",
+      sortOrder,
+      addedBy: session.user.id,
+    })
+    .onConflictDoNothing()
+    .returning({ id: shoppingListItem.id });
+
+  // Only increment usage if the item was actually inserted (not a duplicate)
+  if (result.length > 0) {
+    await incrementProductUsage(parsedProductId.data);
+  }
 
   revalidateGrocery("grocery-list");
 }

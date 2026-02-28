@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -5,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { user } from "../auth/user";
 import { product } from "./product";
@@ -33,5 +35,8 @@ export const shoppingListItem = pgTable(
     index("sli_list_idx").on(table.listId),
     index("sli_product_idx").on(table.productId),
     index("sli_checked_idx").on(table.checked),
+    uniqueIndex("sli_list_product_unique")
+      .on(table.listId, table.productId)
+      .where(sql`${table.productId} IS NOT NULL`),
   ],
 );

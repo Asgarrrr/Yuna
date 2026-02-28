@@ -3,7 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   cacheComponents: true,
   typedRoutes: true,
-  serverExternalPackages: [],
+  serverExternalPackages:
+    process.env.NODE_ENV === "development"
+      ? ["better-auth", "@better-auth/passkey"]
+      : [],
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
