@@ -1,11 +1,11 @@
 import "server-only";
 
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { product, shoppingList, shoppingListItem } from "@/lib/db/schema";
 
-export async function getOrCreateActiveList(userId: string) {
-  // Atomic: INSERT with ON CONFLICT (uses unique index on created_by WHERE is_active)
+export async function getOrCreateActiveList(userId?: string) {
+  // Atomic: INSERT with ON CONFLICT (uses unique index WHERE is_active = true)
   // If a concurrent request already created the list, we just fall through to the SELECT.
   await db
     .insert(shoppingList)
@@ -13,16 +13,14 @@ export async function getOrCreateActiveList(userId: string) {
       id: crypto.randomUUID(),
       name: "Ma liste",
       isActive: true,
-      createdBy: userId,
+      createdBy: userId ?? null,
     })
     .onConflictDoNothing();
 
   const [list] = await db
     .select()
     .from(shoppingList)
-    .where(
-      and(eq(shoppingList.isActive, true), eq(shoppingList.createdBy, userId)),
-    )
+    .where(eq(shoppingList.isActive, true))
     .limit(1);
 
   return list;
@@ -56,7 +54,7 @@ export async function getNextSortOrder(listId: string) {
   return (result?.max ?? 0) + 1;
 }
 
-export async function getActiveListWithItems(userId: string) {
+export async function getActiveListWithItems(userId?: string) {
   const list = await getOrCreateActiveList(userId);
   const items = await getListItems(list.id);
   return { list, items };

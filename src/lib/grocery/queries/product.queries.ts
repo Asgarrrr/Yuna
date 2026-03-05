@@ -65,7 +65,7 @@ export async function bulkUpsertFromReceipt(
     matchedProductId?: string | null;
   }[],
   userId: string,
-  storeName?: string | null,
+  storeName: string | null | undefined,
 ): Promise<BulkUpsertResult> {
   // Pre-fetch code mappings for all rawNames
   const rawCodes = items.map((i) => i.rawName).filter(Boolean);
@@ -263,11 +263,12 @@ export async function bulkUpsertFromReceipt(
         .insert(inventoryItem)
         .values(inventoryValues)
         .onConflictDoUpdate({
-          target: [inventoryItem.productId, inventoryItem.addedBy],
+          target: [inventoryItem.productId],
           set: {
             status: "in_stock",
             lastPurchasedAt: now,
             depletedAt: null,
+            addedBy: userId,
           },
         });
     }
@@ -276,25 +277,20 @@ export async function bulkUpsertFromReceipt(
   });
 }
 
-export async function getProductDetails(productId: string, userId: string) {
-  const [owned] = await db
+export async function getProductDetails(productId: string) {
+  const [exists] = await db
     .select({ id: inventoryItem.id })
     .from(inventoryItem)
-    .where(
-      and(
-        eq(inventoryItem.productId, productId),
-        eq(inventoryItem.addedBy, userId),
-      ),
-    )
+    .where(eq(inventoryItem.productId, productId))
     .limit(1);
 
-  if (!owned) {
+  if (!exists) {
     throw new Error("Produit introuvable dans votre stock");
   }
 
   const [frequency, history, tags] = await Promise.all([
-    getPurchaseFrequency(productId, userId),
-    getProductPurchaseHistory(productId, userId),
+    getPurchaseFrequency(productId),
+    getProductPurchaseHistory(productId),
     getProductTags(productId),
   ]);
 

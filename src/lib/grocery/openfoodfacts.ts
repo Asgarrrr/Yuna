@@ -19,6 +19,13 @@ interface OFFSearchResponse {
   products: OFFProduct[];
 }
 
+const VALID_NUTRISCORE = new Set(["a", "b", "c", "d", "e"]);
+
+function parseNutriscore(raw?: string): string | null {
+  const grade = raw?.trim().toLowerCase() ?? "";
+  return VALID_NUTRISCORE.has(grade) ? grade : null;
+}
+
 export interface OFFEnrichmentData {
   brand: string | null;
   genericName: string | null;
@@ -60,7 +67,7 @@ export async function getProductByBarcode(
       productName: p.product_name || null,
       brand: p.brands?.split(",")[0]?.trim() || null,
       genericName: p.generic_name || null,
-      nutriscoreGrade: p.nutriscore_grade || null,
+      nutriscoreGrade: parseNutriscore(p.nutriscore_grade),
       offId: ean,
       imageSmallUrl: p.image_front_small_url || p.image_small_url || null,
     };
@@ -97,7 +104,7 @@ export async function enrichProduct(
     return {
       brand: best.brands?.split(",")[0]?.trim() || null,
       genericName: best.generic_name || null,
-      nutriscoreGrade: best.nutriscore_grade || null,
+      nutriscoreGrade: parseNutriscore(best.nutriscore_grade),
       offId: best.code || null,
       imageSmallUrl: best.image_front_small_url || best.image_small_url || null,
     };

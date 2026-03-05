@@ -18,8 +18,8 @@ import { getOrCreateActiveList } from "./list.queries";
  * recencyScore: products depleted more recently score higher (0..100)
  * frequencyScore: products overdue for repurchase score higher (0..100)
  */
-export async function getSuggestions(userId: string) {
-  const list = await getOrCreateActiveList(userId);
+export async function getSuggestions() {
+  const list = await getOrCreateActiveList();
 
   // Get all "out" and "low" products with purchase history for scoring
   const candidates = await db
@@ -37,7 +37,6 @@ export async function getSuggestions(userId: string) {
     .where(
       and(
         sql`${inventoryItem.status} IN ('out', 'low')`,
-        eq(inventoryItem.addedBy, userId),
         sql`NOT EXISTS (
           SELECT 1 FROM ${shoppingListItem}
           WHERE ${shoppingListItem.productId} = ${product.id}

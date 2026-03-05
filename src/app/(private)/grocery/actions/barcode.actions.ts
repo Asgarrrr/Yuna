@@ -77,7 +77,12 @@ export async function addBarcodeToStock(data: {
 }) {
   const parsedData = barcodePayloadSchema.safeParse(data);
   if (!parsedData.success) {
-    throw new Error("Données de scan invalides");
+    const details = parsedData.error.flatten().fieldErrors;
+    console.error("[barcode] Validation failed:", details, "input:", data);
+    const fields = Object.entries(details)
+      .map(([k, v]) => `${k}: ${(v as string[]).join(", ")}`)
+      .join("; ");
+    throw new Error(`Données de scan invalides (${fields})`);
   }
 
   const session = await getSession();

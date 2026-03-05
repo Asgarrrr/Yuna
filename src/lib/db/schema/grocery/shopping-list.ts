@@ -22,8 +22,8 @@ export const shoppingList = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("shopping_list_active_user_unique")
-      .on(table.createdBy)
+    uniqueIndex("shopping_list_single_active")
+      .on(table.isActive)
       .where(sql`${table.isActive} = true`),
   ],
 );

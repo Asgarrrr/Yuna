@@ -14,8 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -81,6 +83,7 @@ function DrawerBody({
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [details, setDetails] = useState<ProductDetails | null>(null);
   const [isLoadingDetails, startDetailsTransition] = useTransition();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     startDetailsTransition(async () => {
@@ -302,7 +305,7 @@ function DrawerBody({
         )}
         <Button
           variant="destructive"
-          onClick={handleDelete}
+          onClick={() => setShowDeleteConfirm(true)}
           disabled={isPending}
           size="sm"
           className="gap-2"
@@ -311,6 +314,31 @@ function DrawerBody({
           Supprimer du stock
         </Button>
       </div>
+
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Supprimer du stock ?</DialogTitle>
+            <DialogDescription>
+              {item.productName} sera retiré de ton stock.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Annuler</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                handleDelete();
+              }}
+            >
+              Supprimer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -141,12 +141,15 @@ export function StockView({
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <div className="flex flex-col items-center gap-4 py-12 text-center">
         <Package className="size-10 text-muted-foreground" />
-        <p className="text-muted-foreground">
-          Ton stock est vide. Coche des articles sur ta liste pour les ajouter
-          au stock.
-        </p>
+        <div className="flex flex-col gap-1">
+          <p className="font-medium">Ton stock est vide</p>
+          <p className="max-w-xs text-sm text-muted-foreground">
+            Coche des articles sur ta liste ou scanne des codes-barres pour
+            remplir ton stock.
+          </p>
+        </div>
       </div>
     );
   }

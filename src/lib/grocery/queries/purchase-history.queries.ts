@@ -62,7 +62,7 @@ export async function getPurchaseFrequency(productId: string, userId?: string) {
   };
 }
 
-export async function getProductsNeedingRestock(userId: string) {
+export async function getProductsNeedingRestock() {
   const rows = await db
     .select({
       productId: purchaseHistory.productId,
@@ -73,12 +73,7 @@ export async function getProductsNeedingRestock(userId: string) {
       inventoryItem,
       eq(inventoryItem.productId, purchaseHistory.productId),
     )
-    .where(
-      and(
-        eq(inventoryItem.status, "in_stock"),
-        eq(inventoryItem.addedBy, userId),
-      ),
-    )
+    .where(eq(inventoryItem.status, "in_stock"))
     .orderBy(purchaseHistory.productId, desc(purchaseHistory.purchasedAt));
 
   const grouped = new Map<string, Date[]>();

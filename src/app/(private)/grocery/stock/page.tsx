@@ -13,7 +13,7 @@ const STOCK_SKELETON_KEYS = [
 ] as const;
 
 export default async function StockPage() {
-  const session = await getSession();
+  await getSession();
 
   return (
     <Suspense
@@ -29,18 +29,18 @@ export default async function StockPage() {
         </div>
       }
     >
-      <StockLoader userId={session.user.id} />
+      <StockLoader />
     </Suspense>
   );
 }
 
-async function StockLoader({ userId }: { userId: string }) {
+async function StockLoader() {
   "use cache";
   cacheTag("grocery-stock");
   cacheLife("minutes");
   const [items, restockIds] = await Promise.all([
-    getStock(userId),
-    getProductsNeedingRestock(userId),
+    getStock(),
+    getProductsNeedingRestock(),
   ]);
   const restockProductIds = new Set(restockIds);
   return (

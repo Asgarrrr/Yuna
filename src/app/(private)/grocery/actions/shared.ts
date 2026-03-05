@@ -25,7 +25,7 @@ export const barcodePayloadSchema = z.object({
   brand: z.string().trim().max(120).nullable(),
   genericName: z.string().trim().max(200).nullable(),
   nutriscoreGrade: z.string().trim().max(4).nullable(),
-  imageSmallUrl: z.string().url().max(1000).nullable(),
+  imageSmallUrl: z.string().url().max(1000).nullish().transform((v) => v || null),
   existingProductId: uuidSchema.nullable(),
   target: z.enum(["stock", "list"]),
 });

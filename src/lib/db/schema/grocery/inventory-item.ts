@@ -30,7 +30,7 @@ export const inventoryItem = pgTable(
       .defaultNow(),
   },
   (table) => [
-    unique("inventory_product_user_unique").on(table.productId, table.addedBy),
+    unique("inventory_product_unique").on(table.productId),
     index("inventory_product_idx").on(table.productId),
     index("inventory_expires_idx").on(table.expiresAt),
     index("inventory_location_idx").on(table.location),

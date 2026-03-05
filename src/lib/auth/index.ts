@@ -78,7 +78,7 @@ export const auth = betterAuth({
 
           if (inviteToken) {
             // Atomic claim: only mark as used if still unclaimed (prevents race condition)
-            const [claimed] = await db
+            await db
               .update(schema.invitation)
               .set({
                 usedBy: user.id,
@@ -89,19 +89,7 @@ export const auth = betterAuth({
                   eq(schema.invitation.token, inviteToken),
                   isNull(schema.invitation.usedBy),
                 ),
-              )
-              .returning({ id: schema.invitation.id });
-
-            if (!claimed) {
-              // Another concurrent sign-up consumed this token — this is a rare edge case.
-              // The user was already created by better-auth at this point, but without
-              // a valid invitation claim. In practice this is acceptable because:
-              // 1. The token was valid when checked in `before`
-              // 2. This only happens under exact concurrency
-              console.warn(
-                `[auth] Invitation token was consumed by another request during sign-up for user ${user.id}`,
               );
-            }
           }
         },
       },

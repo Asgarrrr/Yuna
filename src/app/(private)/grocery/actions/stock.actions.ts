@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -30,12 +30,12 @@ export async function cycleStockStatus(
     throw new Error("Statut de stock invalide");
   }
 
-  const session = await getSession();
+  await getSession();
 
   const nextStatus =
     NEXT_STATUS[parsedCurrentStatus.data as StockStatus] ?? "in_stock";
 
-  await updateStockStatus(parsedProductId.data, nextStatus, session.user.id);
+  await updateStockStatus(parsedProductId.data, nextStatus);
   revalidateGrocery("grocery-stock", "grocery-suggestions");
 }
 
@@ -46,17 +46,12 @@ export async function setStockLocation(productId: string, location: string) {
     throw new Error("Emplacement invalide");
   }
 
-  const session = await getSession();
+  await getSession();
 
   await db
     .update(inventoryItem)
     .set({ location: parsedLocation.data })
-    .where(
-      and(
-        eq(inventoryItem.productId, parsedProductId.data),
-        eq(inventoryItem.addedBy, session.user.id),
-      ),
-    );
+    .where(eq(inventoryItem.productId, parsedProductId.data));
 
   revalidateGrocery("grocery-stock");
 }
@@ -67,16 +62,11 @@ export async function removeStockItem(productId: string) {
     throw new Error("Identifiant de produit invalide");
   }
 
-  const session = await getSession();
+  await getSession();
 
   await db
     .delete(inventoryItem)
-    .where(
-      and(
-        eq(inventoryItem.productId, parsedProductId.data),
-        eq(inventoryItem.addedBy, session.user.id),
-      ),
-    );
+    .where(eq(inventoryItem.productId, parsedProductId.data));
 
   revalidateGrocery("grocery-stock", "grocery-suggestions");
 }
@@ -93,17 +83,12 @@ export async function setStockExpiry(
     throw new Error("Date d'expiration invalide");
   }
 
-  const session = await getSession();
+  await getSession();
 
   await db
     .update(inventoryItem)
     .set({ expiresAt: parsedExpiry.data ? new Date(parsedExpiry.data) : null })
-    .where(
-      and(
-        eq(inventoryItem.productId, parsedProductId.data),
-        eq(inventoryItem.addedBy, session.user.id),
-      ),
-    );
+    .where(eq(inventoryItem.productId, parsedProductId.data));
 
   revalidateGrocery("grocery-stock");
 }
@@ -114,8 +99,8 @@ export async function getProductDetails(productId: string) {
     throw new Error("Identifiant de produit invalide");
   }
 
-  const session = await getSession();
-  return getProductDetailsQuery(parsedProductId.data, session.user.id);
+  await getSession();
+  return getProductDetailsQuery(parsedProductId.data);
 }
 
 export async function addProductTag(productId: string, tag: string) {

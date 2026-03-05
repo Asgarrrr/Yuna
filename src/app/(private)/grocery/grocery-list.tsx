@@ -1,10 +1,12 @@
 "use client";
 
-import { Mic, MicOff, Plus, Send, Trash2 } from "lucide-react";
+import { Camera, Mic, MicOff, Plus, ScanBarcode, Send, ShoppingCart, Trash2 } from "lucide-react";
 import {
   useCallback,
   useOptimistic,
   useReducer,
+  useRef,
+  useState,
   useTransition,
 } from "react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +15,15 @@ import { useSpeechInput } from "@/hooks/use-speech-input";
 import type { ListItem, Suggestion } from "@/lib/grocery/types";
 import { ListItemRow } from "./list-item-row";
 import { pluralize } from "@/lib/utils";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   addItemsWithAI,
   addSuggestionToList,
@@ -68,6 +79,8 @@ export function GroceryList({
   suggestions: Suggestion[];
 }) {
   const [isPending, startTransition] = useTransition();
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [optimisticItems, setOptimisticItems] = useOptimistic(initialItems);
   const [inputState, dispatch] = useReducer(inputReducer, {
     text: "",
@@ -104,6 +117,7 @@ export function GroceryList({
         error: "Impossible d'ajouter les articles. Réessaie.",
       });
     }
+    inputRef.current?.focus();
   }, []);
 
   const { hasSpeechSupport, toggleListening } = useSpeechInput({
@@ -164,6 +178,7 @@ export function GroceryList({
     <div className="flex flex-col gap-6">
       <form onSubmit={handleAdd} className="flex gap-2">
         <Input
+          ref={inputRef}
           value={inputState.text}
           onChange={(e) => dispatch({ type: "SET_TEXT", text: e.target.value })}
           placeholder={
@@ -234,9 +249,29 @@ export function GroceryList({
       {unchecked.length === 0 &&
         checked.length === 0 &&
         !inputState.isAdding && (
-          <p className="py-12 text-center text-muted-foreground">
-            Ta liste est vide. Dis-moi ce qu'il te faut !
-          </p>
+          <div className="flex flex-col items-center gap-4 py-12 text-center">
+            <ShoppingCart className="size-10 text-muted-foreground" />
+            <div className="flex flex-col gap-1">
+              <p className="font-medium">Ta liste est vide</p>
+              <p className="text-sm text-muted-foreground">
+                Dis-moi ce qu'il te faut !
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Send className="size-3" /> Texte
+              </span>
+              <span className="flex items-center gap-1">
+                <Mic className="size-3" /> Voix
+              </span>
+              <span className="flex items-center gap-1">
+                <ScanBarcode className="size-3" /> Code-barres
+              </span>
+              <span className="flex items-center gap-1">
+                <Camera className="size-3" /> Ticket
+              </span>
+            </div>
+          </div>
         )}
 
       {unchecked.length > 0 && (
@@ -263,7 +298,7 @@ export function GroceryList({
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleClearChecked}
+              onClick={() => setShowClearDialog(true)}
               disabled={isPending}
             >
               <Trash2 className="mr-1 size-3" />
@@ -283,6 +318,31 @@ export function GroceryList({
           </ul>
         </div>
       )}
+
+      <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Supprimer les articles cochés ?</DialogTitle>
+            <DialogDescription>
+              {checked.length} {checked.length > 1 ? "articles cochés seront supprimés" : "article coché sera supprimé"}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Annuler</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowClearDialog(false);
+                handleClearChecked();
+              }}
+            >
+              Supprimer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

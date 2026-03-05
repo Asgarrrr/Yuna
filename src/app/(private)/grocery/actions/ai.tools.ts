@@ -224,7 +224,7 @@ export function createGroceryTools(
         "Retourne un résumé complet de tout le stock avec nom, statut et catégorie. Utilise quand l'utilisateur demande ce qu'il a en stock.",
       inputSchema: z.object({}),
       execute: async () => {
-        const items = await getStockSummary(session.user.id);
+        const items = await getStockSummary();
         return {
           items: items.map((i) => ({
             productId: i.productId,

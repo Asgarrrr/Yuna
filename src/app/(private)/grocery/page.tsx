@@ -34,7 +34,7 @@ async function GroceryListLoader({ userId }: { userId: string }) {
   cacheLife("minutes");
   const [{ items }, suggestions] = await Promise.all([
     getActiveListWithItems(userId),
-    getSuggestions(userId),
+    getSuggestions(),
   ]);
   return <GroceryList initialItems={items} suggestions={suggestions} />;
 }

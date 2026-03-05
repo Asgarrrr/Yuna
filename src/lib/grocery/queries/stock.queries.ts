@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, ilike, sql } from "drizzle-orm";
+import { eq, ilike, sql } from "drizzle-orm";
 import { db, type DbExecutor } from "@/lib/db";
 import {
   inventoryItem,
@@ -12,7 +12,7 @@ import { escapeLike } from "./shared";
 
 export type StockItem = Awaited<ReturnType<typeof getStock>>[number];
 
-export async function getStock(userId: string) {
+export async function getStock() {
   return db
     .select({
       id: inventoryItem.id,
@@ -37,7 +37,6 @@ export async function getStock(userId: string) {
     })
     .from(inventoryItem)
     .innerJoin(product, eq(inventoryItem.productId, product.id))
-    .where(eq(inventoryItem.addedBy, userId))
     .orderBy(inventoryItem.location, product.name);
 }
 
@@ -66,13 +65,14 @@ export async function upsertInventory(
       addedBy: userId,
     })
     .onConflictDoUpdate({
-      target: [inventoryItem.productId, inventoryItem.addedBy],
+      target: [inventoryItem.productId],
       set: {
         status,
         quantity: quantity !== undefined ? quantity : sql`excluded.quantity`,
         lastPurchasedAt:
           status === "in_stock" ? now : sql`inventory_item.last_purchased_at`,
         depletedAt: status === "out" ? now : null,
+        addedBy: userId,
       },
     });
 
@@ -98,7 +98,6 @@ export async function upsertStockItem(
 export async function updateStockStatus(
   productId: string,
   status: StockStatus,
-  userId: string,
 ) {
   const now = new Date();
   await db
@@ -109,12 +108,7 @@ export async function updateStockStatus(
       depletedAt: status === "out" ? now : null,
       lastPurchasedAt: status === "in_stock" ? now : undefined,
     })
-    .where(
-      and(
-        eq(inventoryItem.productId, productId),
-        eq(inventoryItem.addedBy, userId),
-      ),
-    );
+    .where(eq(inventoryItem.productId, productId));
 }
 
 /**
@@ -133,6 +127,14 @@ export async function getStockByNamesOrTags(names: string[]) {
     ilike(productTag.tag, `%${escapeLike(n.toLowerCase())}%`),
   );
 
+  const nameWhere = nameConditions.length === 1
+    ? nameConditions[0]
+    : sql`(${sql.join(nameConditions, sql` OR `)})`;
+
+  const tagWhere = tagConditions.length === 1
+    ? tagConditions[0]
+    : sql`(${sql.join(tagConditions, sql` OR `)})`;
+
   const byName = db
     .select({
       productId: product.id,
@@ -141,11 +143,7 @@ export async function getStockByNamesOrTags(names: string[]) {
     })
     .from(product)
     .leftJoin(inventoryItem, eq(inventoryItem.productId, product.id))
-    .where(
-      nameConditions.length === 1
-        ? nameConditions[0]
-        : sql`(${sql.join(nameConditions, sql` OR `)})`,
-    )
+    .where(nameWhere)
     .limit(50);
 
   const byTag = db
@@ -157,11 +155,7 @@ export async function getStockByNamesOrTags(names: string[]) {
     .from(productTag)
     .innerJoin(product, eq(productTag.productId, product.id))
     .leftJoin(inventoryItem, eq(inventoryItem.productId, product.id))
-    .where(
-      tagConditions.length === 1
-        ? tagConditions[0]
-        : sql`(${sql.join(tagConditions, sql` OR `)})`,
-    )
+    .where(tagWhere)
     .limit(50);
 
   const [nameResults, tagResults] = await Promise.all([byName, byTag]);
@@ -185,7 +179,7 @@ export async function getStockByNamesOrTags(names: string[]) {
   return results;
 }
 
-export async function getStockSummary(userId: string) {
+export async function getStockSummary() {
   return db
     .select({
       productId: product.id,
@@ -195,7 +189,5 @@ export async function getStockSummary(userId: string) {
     })
     .from(inventoryItem)
     .innerJoin(product, eq(inventoryItem.productId, product.id))
-    .where(eq(inventoryItem.addedBy, userId))
     .orderBy(product.category, product.name);
 }
-

@@ -173,7 +173,7 @@ export function ActionFAB() {
           type="button"
           onClick={handleBarcodeClick}
           className="flex size-11 items-center justify-center rounded-full bg-foreground text-background shadow-lg transition-transform hover:scale-105 active:scale-95"
-          title="Scanner un code-barres"
+          aria-label="Scanner un code-barres"
         >
           <ScanBarcode className="size-5" />
         </button>
@@ -181,7 +181,7 @@ export function ActionFAB() {
           type="button"
           onClick={handleReceiptClick}
           className="flex size-11 items-center justify-center rounded-full bg-foreground text-background shadow-lg transition-transform hover:scale-105 active:scale-95"
-          title="Scanner un ticket de caisse"
+          aria-label="Scanner un ticket"
         >
           <Camera className="size-5" />
         </button>
@@ -193,7 +193,8 @@ export function ActionFAB() {
         onClick={handleFABClick}
         disabled={isProcessing}
         className="fixed bottom-6 right-6 z-50 size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
-        title="Actions"
+        aria-label="Actions"
+        aria-expanded={state.isOpen}
       >
         {isProcessing ? (
           <Loader2 className="size-6 animate-spin" />
@@ -226,7 +227,7 @@ export function ActionFAB() {
 
       {/* Success toast */}
       {successMessage && (
-        <div className="fixed inset-x-0 bottom-24 z-50 mx-auto w-fit animate-in fade-in slide-in-from-bottom-4">
+        <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-24 z-50 mx-auto w-fit animate-in fade-in slide-in-from-bottom-4">
           <div className="flex items-center gap-2 rounded-full bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
             <span className="flex size-5 items-center justify-center rounded-full bg-white/20">
               ✓
